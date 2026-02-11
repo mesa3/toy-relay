@@ -200,7 +200,7 @@ class TextHandler(logging.Handler):
 class RelayGUI:
     def __init__(self, root):
         self.root = root
-        self.root.title("ToySerialController 中继器 (智能合并+双向版)")
+        self.root.title("toy-relay - UDP 转串口")
         self.root.geometry("650x600")
         
         self.relay = None

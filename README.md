@@ -1,15 +1,17 @@
-# UDP to Serial Relay
+# UDP to Serial Relay for T-Code
 
-A Python application that acts as a relay between UDP packets and a serial device. It includes a graphical user interface (GUI) for easy configuration and monitoring. The relay is designed to handle T-Code commands, with intelligent merging of commands for multiple axes.
+This Python application acts as a relay, or bridge, between a UDP T-Code source and a serial device. It is designed to work with applications like [ToySerialController](https://github.com/Yoooi0/ToySerialController) for Virt-a-Mate, which can send motor control commands (T-Code) over a network.
+
+This relay receives those UDP packets, intelligently merges commands to prevent stuttering, and forwards them to a connected serial device, while also relaying feedback from the device back to the sender. It includes a graphical user interface (GUI) for easy configuration and monitoring.
 
 ## Features
 
-*   Forwards UDP packets to a serial port.
-*   Receives feedback from the serial port and sends it back to the last UDP client.
-*   Intelligently merges T-Code commands received in a short period.
-*   GUI for configuration, monitoring, and manual command sending.
-*   Dummy mode for testing without a serial device.
-*   Safety watchdog to center the device if no signal is received.
+*   **Bridge for ToySerialController:** Specifically designed to forward T-Code from UDP to a serial port.
+*   **Command Merging:** Intelligently merges multiple T-Code commands received in a short period to ensure smooth motion.
+*   **Bidirectional Communication:** Receives feedback from the serial port and sends it back to the last UDP client.
+*   **GUI:** Easy-to-use interface for configuration, monitoring, and sending manual commands.
+*   **Dummy Mode:** Allows for testing the UDP reception without a physical serial device connected.
+*   **Safety Watchdog:** Automatically centers the device if the UDP signal is lost for a few seconds.
 
 ## Dependencies
 
@@ -31,11 +33,11 @@ To run the application with its graphical interface:
 python udp_to_serial.py
 ```
 
-Then, configure the UDP listening IP/port, select the correct serial port and baud rate, and click "启动中继服务" (Start Relay Service).
+Then, configure the UDP listening IP/port (matching the output of your T-Code application), select the correct serial port and baud rate for your device, and click "启动中继服务" (Start Relay Service).
 
-### Sending Data
+### Sending Test Data
 
-The `udp_sender_test.py` script provides an example of how to send T-Code commands to the relay via UDP.
+The `udp_sender_test.py` script provides an example of how to send T-Code commands to the relay via UDP for testing purposes.
 
 ```bash
 python udp_sender_test.py
@@ -50,5 +52,5 @@ The project includes a suite of unit tests to verify the core logic, such as T-C
 To run the tests:
 
 ```bash
-python test_udp_to_serial.py
+python tests/test_udp_to_serial.py
 ```
