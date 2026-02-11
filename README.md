@@ -1,12 +1,12 @@
-# toy-relay: UDP to Serial T-Code Relay
+# Toy-Relay
 
-This application bridges the gap between a networked T-Code source and a direct-attached serial device like an OSR. It's the perfect solution for remotely controlling your device.
+This application bridges the gap between a networked T-Code source and a direct-attached serial device like an OSR. 
 
 ## Core Use Case
 
 This tool is designed for a specific scenario: you are running a T-Code generating application (like [ToySerialController](https://github.com/Yoooi0/ToySerialController) in Virt-a-Mate) on one machine, but your OSR or other serial toy is physically connected to a *different* machine.
 
-Since the toy itself does not have network capabilities, this relay runs on the machine with the toy attached. It listens for UDP commands from your remote application and forwards them directly to the toy's serial port.
+Since the some toy itself does not have network capabilities, this relay runs on the machine with the toy attached. It listens for UDP commands from your remote application and forwards them directly to the toy's serial port.
 
 ### Architecture
 
