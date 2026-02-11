@@ -13,15 +13,15 @@ try:
     import serial
     import serial.tools.list_ports
 except ImportError:
-    print("错误: 找不到 'serial.tools' 模块。请确保安装了 'pyserial' 而不是 'serial'。")
-    print("尝试运行: pip uninstall serial; pip install pyserial")
+    print("Error: 'serial.tools' module not found. Please ensure 'pyserial' is installed, not 'serial'.")
+    print("Try running: pip uninstall serial; pip install pyserial")
     sys.exit(1)
 
-# 配置日志
+# Configure logging
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.INFO)
 
-# T-Code 解析正则表达式 (支持空格)
+# T-Code parsing regex (supports spaces)
 TCODE_REGEX = re.compile(r'([A-Z][0-9])\s*([0-9]+(?:\s*[IS][0-9]+)?)')
 
 class UdpToSerialRelay:
@@ -46,29 +46,29 @@ class UdpToSerialRelay:
                 self.sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
                 self.sock.bind((self.udp_ip, self.udp_port))
                 self.sock.setblocking(False)
-            logger.info(f"UDP 监听: {self.udp_ip}:{self.udp_port}")
+            logger.info(f"UDP listening on: {self.udp_ip}:{self.udp_port}")
 
             if self.dummy:
-                logger.warning("DUMMY 模式 - 仅进行 UDP 测试")
+                logger.warning("DUMMY mode - Only UDP testing will be performed")
                 return
 
             self.ser = serial.Serial(
                 port=self.serial_port_name,
                 baudrate=self.baud_rate,
-                timeout=0.01, # 小超时用于读取
+                timeout=0.01, # Short timeout for reading
                 write_timeout=0.1
             )
             time.sleep(1) 
-            logger.info(f"串口连接成功: {self.serial_port_name}")
-            self.send_serial_cmd("L05000 R15000 V00000") # 归中
+            logger.info(f"Serial connection successful: {self.serial_port_name}")
+            self.send_serial_cmd("L05000 R15000 V00000") # Center device
 
         except Exception as e:
             if not self.dummy:
-                logger.error(f"连接失败: {e}")
+                logger.error(f"Connection failed: {e}")
                 raise
 
     def send_serial_cmd(self, cmd_str: str):
-        """发送指令到串口，确保格式正确"""
+        """Sends a command to the serial port, ensuring correct format"""
         if self.dummy or not self.ser or not self.ser.is_open:
             return
         if not cmd_str.endswith('\n'):
@@ -76,16 +76,16 @@ class UdpToSerialRelay:
         try:
             self.ser.write(cmd_str.encode())
         except Exception as e:
-            logger.error(f"串口发送失败: {e}")
+            logger.error(f"Serial send failed: {e}")
 
     def process_tcode_buffer(self, packets):
-        """轴级指令合并逻辑"""
+        """Axis command merging logic"""
         axis_state = {}
         for packet in packets:
             decoded = packet.decode(errors='replace').upper()
             matches = TCODE_REGEX.findall(decoded)
             for axis, cmd in matches:
-                # 移除命令中的空格，标准化格式
+                # Remove spaces from command for standardization
                 axis_state[axis] = cmd.replace(" ", "")
         
         if not axis_state:
@@ -102,9 +102,9 @@ class UdpToSerialRelay:
             return
 
         self.running = True
-        logger.info("中继服务启动...")
+        logger.info("Relay service started...")
         
-        # 启动串口读取线程（回传 UDP）
+        # Start serial reading thread (for UDP feedback)
         serial_thread = threading.Thread(target=self.serial_to_udp_loop, daemon=True)
         serial_thread.start()
 
@@ -132,19 +132,19 @@ class UdpToSerialRelay:
                             if self.verbose:
                                 logger.info(f"-> {merged_cmd.strip()}")
 
-                # 安全看门狗
+                # Safety watchdog
                 if not self.watchdog_triggered and (time.time() - self.last_receive_time > 2.0):
                     self.send_serial_cmd("L05000 V00000")
                     self.watchdog_triggered = True
-                    logger.warning("设备归中 (等待信号...)")
+                    logger.warning("Device centered (waiting for signal...)")
 
             except Exception as e:
-                logger.error(f"主循环异常: {e}")
+                logger.error(f"Main loop exception: {e}")
                 break
         self.cleanup()
 
     def serial_to_udp_loop(self):
-        """从串口读取反馈并回传给最后发送指令的 UDP 客户端"""
+        """Reads feedback from serial and sends it back to the last UDP client"""
         while self.running:
             if not self.dummy and self.ser and self.ser.is_open:
                 try:
@@ -152,7 +152,7 @@ class UdpToSerialRelay:
                     if line:
                         decoded = line.decode(errors='replace').strip()
                         if decoded:
-                            logger.info(f"<- [设备反馈] {decoded}")
+                            logger.info(f"<- [Device Feedback] {decoded}")
                             if self.last_udp_addr:
                                 self.sock.sendto(line, self.last_udp_addr)
                 except:
@@ -178,7 +178,7 @@ class TextHandler(logging.Handler):
 
     def emit(self, record):
         msg = self.format(record)
-        # 过滤高频位置更新日志，保持界面整洁
+        # Filter high-frequency position update logs to keep the interface clean
         if self.hide_pos and ("->" in msg) and ("L0" in msg or "R1" in msg):
             return
         with self._flush_lock:
@@ -200,74 +200,74 @@ class TextHandler(logging.Handler):
 class RelayGUI:
     def __init__(self, root):
         self.root = root
-        self.root.title("toy-relay - UDP 转串口")
+        self.root.title("toy-relay - UDP to Serial")
         self.root.geometry("650x600")
         
         self.relay = None
         self.thread = None
 
-        # 连接设置
-        settings_frame = ttk.LabelFrame(root, text="配置")
+        # Connection Settings
+        settings_frame = ttk.LabelFrame(root, text="Settings")
         settings_frame.pack(fill="x", padx=10, pady=5)
 
         # UDP
         row0 = ttk.Frame(settings_frame)
         row0.pack(fill="x", padx=5, pady=2)
-        ttk.Label(row0, text="UDP 监听:").pack(side="left")
+        ttk.Label(row0, text="UDP Listen:").pack(side="left")
         self.udp_ip = tk.StringVar(value="127.0.0.1")
         ttk.Entry(row0, textvariable=self.udp_ip, width=12).pack(side="left", padx=2)
         ttk.Label(row0, text=":").pack(side="left")
         self.udp_port = tk.IntVar(value=8000)
         ttk.Entry(row0, textvariable=self.udp_port, width=6).pack(side="left", padx=2)
         
-        # 串口
+        # Serial Port
         row1 = ttk.Frame(settings_frame)
         row1.pack(fill="x", padx=5, pady=2)
-        ttk.Label(row1, text="串口设备:").pack(side="left")
+        ttk.Label(row1, text="Serial Port:").pack(side="left")
         self.serial_port = tk.StringVar()
         self.port_combo = ttk.Combobox(row1, textvariable=self.serial_port, width=20)
         self.port_combo.pack(side="left", padx=5)
-        ttk.Button(row1, text="刷新", command=self.refresh_ports).pack(side="left")
+        ttk.Button(row1, text="Refresh", command=self.refresh_ports).pack(side="left")
         
-        ttk.Label(row1, text="波特率:").pack(side="left", padx=(10,0))
+        ttk.Label(row1, text="Baud Rate:").pack(side="left", padx=(10,0))
         self.baud_rate = tk.IntVar(value=921600)
         ttk.Entry(row1, textvariable=self.baud_rate, width=10).pack(side="left", padx=2)
 
-        # 选项
+        # Options
         row2 = ttk.Frame(settings_frame)
         row2.pack(fill="x", padx=5, pady=2)
         self.hide_pos = tk.BooleanVar(value=True)
-        ttk.Checkbutton(row2, text="隐藏高频位置日志", variable=self.hide_pos, command=self.update_log_filter).pack(side="left")
+        ttk.Checkbutton(row2, text="Hide high-frequency position logs", variable=self.hide_pos, command=self.update_log_filter).pack(side="left")
         self.dummy_mode = tk.BooleanVar(value=False)
-        ttk.Checkbutton(row2, text="模拟模式", variable=self.dummy_mode).pack(side="left", padx=10)
+        ttk.Checkbutton(row2, text="Dummy Mode", variable=self.dummy_mode).pack(side="left", padx=10)
 
-        # 控制与手动指令
-        cmd_frame = ttk.LabelFrame(root, text="实时控制")
+        # Live Control
+        cmd_frame = ttk.LabelFrame(root, text="Live Control")
         cmd_frame.pack(fill="x", padx=10, pady=5)
         
         row3 = ttk.Frame(cmd_frame)
         row3.pack(fill="x", padx=5, pady=5)
         self.cmd_input = tk.StringVar()
-        ttk.Label(row3, text="手动发送 T-Code:").pack(side="left")
+        ttk.Label(row3, text="Send T-Code Manually:").pack(side="left")
         self.ent = ttk.Entry(row3, textvariable=self.cmd_input)
         self.ent.pack(side="left", fill="x", expand=True, padx=5)
         self.ent.bind("<Return>", lambda e: self.send_manual_cmd())
-        ttk.Button(row3, text="发送", command=self.send_manual_cmd).pack(side="left")
+        ttk.Button(row3, text="Send", command=self.send_manual_cmd).pack(side="left")
         
-        # 预设指令
+        # Preset Commands
         row4 = ttk.Frame(cmd_frame)
         row4.pack(fill="x", padx=5, pady=2)
-        ttk.Button(row4, text="查询设备 (D0)", command=lambda: self.send_manual_cmd("D0")).pack(side="left", padx=2)
-        ttk.Button(row4, text="查询电池 ($B)", command=lambda: self.send_manual_cmd("$B")).pack(side="left", padx=2)
-        ttk.Button(row4, text="紧急停止", command=lambda: self.send_manual_cmd("V00000 L05000")).pack(side="left", padx=2)
+        ttk.Button(row4, text="Query Device (D0)", command=lambda: self.send_manual_cmd("D0")).pack(side="left", padx=2)
+        ttk.Button(row4, text="Query Battery ($B)", command=lambda: self.send_manual_cmd("$B")).pack(side="left", padx=2)
+        ttk.Button(row4, text="Emergency Stop", command=lambda: self.send_manual_cmd("V00000 L05000")).pack(side="left", padx=2)
 
-        # 启动按钮
-        self.start_btn = ttk.Button(root, text="启动中继服务", command=self.start_service)
+        # Start/Stop Buttons
+        self.start_btn = ttk.Button(root, text="Start Relay Service", command=self.start_service)
         self.start_btn.pack(fill="x", padx=10, pady=5)
-        self.stop_btn = ttk.Button(root, text="停止服务", command=self.stop_service, state="disabled")
+        self.stop_btn = ttk.Button(root, text="Stop Service", command=self.stop_service, state="disabled")
         self.stop_btn.pack(fill="x", padx=10, pady=2)
 
-        # 日志
+        # Log
         self.log_text = scrolledtext.ScrolledText(root, state='disabled', height=15, font=("Consolas", 9))
         self.log_text.pack(fill="both", expand=True, padx=10, pady=5)
 
