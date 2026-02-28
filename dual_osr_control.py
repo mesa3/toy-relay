@@ -83,6 +83,7 @@ class DualOSRController:
         self.roll_amp = 50.0   # R1
         self.twist_amp = 50.0  # R0
         self.base_squeeze = 50.0 # Base L0 offset
+        self.ankle_angle_offset = 50.0 # Base R2 offset
         self.motion_mode = "v_stroke"
 
 
@@ -168,6 +169,7 @@ class DualOSRController:
             # Centers (0-9999)
             center_l0 = (self.base_squeeze / 100.0) * 9999
             center_rx = 5000
+            center_r2 = (self.ankle_angle_offset / 100.0) * 9999
 
             # Clamp L0
             if center_l0 - amp_l0 < 0: center_l0 = amp_l0
@@ -188,8 +190,8 @@ class DualOSRController:
 
                 # Active pitch compensation: when L0 extends (sin -> +1), R2 pitches UP to compensate for the 45deg downward slope.
                 # Use pitch_amp to control the *intensity* of this compensation.
-                pos_a_r2 = center_rx + amp_r2 * math.sin(phase_a)
-                pos_b_r2 = center_rx + amp_r2 * math.sin(phase_a) # Symmetric
+                pos_a_r2 = center_r2 + amp_r2 * math.sin(phase_a)
+                pos_b_r2 = center_r2 + amp_r2 * math.sin(phase_a) # Symmetric
 
                 cmd_a_parts.extend([f"L0{clamp(pos_l0):04d}", f"R2{clamp(pos_a_r2):04d}"])
                 cmd_b_parts.extend([f"L0{clamp(pos_l0):04d}", f"R2{clamp(pos_b_r2):04d}"])
@@ -202,8 +204,8 @@ class DualOSRController:
 
                 # When L0 pushes (sin -> +1), R2 pitches down (cos or -sin -> -1).
                 # We use -sin so it's in phase with the stroke: push out -> toe down.
-                pos_a_r2 = center_rx - amp_r2 * math.sin(phase_a)
-                pos_b_r2 = center_rx - amp_r2 * math.sin(phase_b)
+                pos_a_r2 = center_r2 - amp_r2 * math.sin(phase_a)
+                pos_b_r2 = center_r2 - amp_r2 * math.sin(phase_b)
 
                 cmd_a_parts.extend([f"L0{clamp(pos_a_l0):04d}", f"R2{clamp(pos_a_r2):04d}"])
                 cmd_b_parts.extend([f"L0{clamp(pos_b_l0):04d}", f"R2{clamp(pos_b_r2):04d}"])
@@ -223,8 +225,8 @@ class DualOSRController:
                 cmd_b_parts.extend([f"L0{clamp(center_l0):04d}", f"R1{clamp(pos_b_r1):04d}", f"R0{clamp(pos_b_r0):04d}"])
 
             elif self.motion_mode == "sole_rub":
-                pos_a_r2 = center_rx + amp_r2 * math.sin(phase_a)
-                pos_b_r2 = center_rx + amp_r2 * math.sin(phase_b)
+                pos_a_r2 = center_r2 + amp_r2 * math.sin(phase_a)
+                pos_b_r2 = center_r2 + amp_r2 * math.sin(phase_b)
 
                 pos_a_r1 = center_rx + amp_r1 * math.cos(phase_a)
                 pos_b_r1 = center_rx + amp_r1 * math.cos(phase_b)
@@ -241,8 +243,8 @@ class DualOSRController:
 
                 # Toes point "down" to tap towards the center
                 # Assuming R2 < 5000 is pointing toes down. We sweep between 5000 and (5000 - amp_r2)
-                pos_a_r2 = center_rx - (amp_r2 / 2.0) - (amp_r2 / 2.0) * math.sin(fast_phase_a)
-                pos_b_r2 = center_rx - (amp_r2 / 2.0) - (amp_r2 / 2.0) * math.sin(fast_phase_b)
+                pos_a_r2 = center_r2 - (amp_r2 / 2.0) - (amp_r2 / 2.0) * math.sin(fast_phase_a)
+                pos_b_r2 = center_r2 - (amp_r2 / 2.0) - (amp_r2 / 2.0) * math.sin(fast_phase_b)
 
                 # Slight pulsing L0
                 pos_l0 = center_l0 + (amp_l0 * 0.1) * math.sin(phase_a)
@@ -260,7 +262,7 @@ class DualOSRController:
                 pos_l0 = center_l0 + amp_l0 * math.sin(phase_a)
 
                 # Slight pitch to keep the stroke parallel to the target
-                pos_r2 = center_rx + amp_r2 * math.sin(phase_a)
+                pos_r2 = center_r2 + amp_r2 * math.sin(phase_a)
 
                 cmd_a_parts.extend([f"L0{clamp(pos_l0):04d}", f"R1{clamp(pos_a_r1):04d}", f"R2{clamp(pos_r2):04d}"])
                 cmd_b_parts.extend([f"L0{clamp(pos_l0):04d}", f"R1{clamp(pos_b_r1):04d}", f"R2{clamp(pos_r2):04d}"])
@@ -268,7 +270,7 @@ class DualOSRController:
             elif self.motion_mode == "heel_press":
                 # Toes pitched heavily UP (away from target) to expose the heels.
                 # Assuming R2 > 5000 is pitch up.
-                pos_r2 = center_rx + amp_r2
+                pos_r2 = center_r2 + amp_r2
 
                 # Deep, slow squeezing L0
                 slow_phase = phase_a * 0.5
@@ -287,8 +289,8 @@ class DualOSRController:
                 pos_a_r1 = center_rx + amp_r1 * math.sin(phase_a)
                 pos_b_r1 = center_rx - amp_r1 * math.sin(phase_a) # mirror roll
 
-                pos_a_r2 = center_rx + amp_r2 * math.cos(phase_a)
-                pos_b_r2 = center_rx + amp_r2 * math.cos(phase_a) # sync pitch
+                pos_a_r2 = center_r2 + amp_r2 * math.cos(phase_a)
+                pos_b_r2 = center_r2 + amp_r2 * math.cos(phase_a) # sync pitch
 
                 cmd_a_parts.extend([f"L0{clamp(center_l0):04d}", f"R1{clamp(pos_a_r1):04d}", f"R2{clamp(pos_a_r2):04d}"])
                 cmd_b_parts.extend([f"L0{clamp(center_l0):04d}", f"R1{clamp(pos_b_r1):04d}", f"R2{clamp(pos_b_r2):04d}"])
@@ -323,7 +325,7 @@ class DualOSRGui:
     def __init__(self, root):
         self.root = root
         self.root.title("Dual OSR Footjob Simulator")
-        self.root.geometry("600x850")
+        self.root.geometry("600x900")
         self.controller = DualOSRController()
 
         self.create_widgets()
@@ -411,6 +413,12 @@ class DualOSRGui:
         adv_frame = ttk.LabelFrame(ctrl_frame, text="Advanced Axes (Depends on Mode)")
         adv_frame.pack(fill="x", padx=5, pady=5)
 
+        # Ankle Pitch Offset (R2 Base)
+        ttk.Label(adv_frame, text="Ankle Pitch Offset R2 Base (%):").pack(anchor="w", padx=5)
+        self.ankle_offset_var = tk.DoubleVar(value=50.0)
+        self.ankle_scale = ttk.Scale(adv_frame, from_=0.0, to=100.0, variable=self.ankle_offset_var, command=self.update_params)
+        self.ankle_scale.pack(fill="x", padx=5, pady=2)
+
         # Pitch (R2)
         ttk.Label(adv_frame, text="Pitch Amplitude R2 (%):").pack(anchor="w", padx=5)
         self.pitch_amp_var = tk.DoubleVar(value=50.0)
@@ -478,6 +486,7 @@ class DualOSRGui:
         self.controller.speed = self.speed_var.get()
         self.controller.stroke = self.stroke_var.get()
         self.controller.base_squeeze = self.base_squeeze_var.get()
+        self.controller.ankle_angle_offset = self.ankle_offset_var.get()
         self.controller.pitch_amp = self.pitch_amp_var.get()
         self.controller.roll_amp = self.roll_amp_var.get()
         self.controller.twist_amp = self.twist_amp_var.get()

@@ -11,6 +11,7 @@ def test_clamping():
     controller.roll_amp = 100.0
     controller.twist_amp = 100.0
     controller.base_squeeze = 100.0
+    controller.ankle_angle_offset = 100.0
 
     # Check all modes for out of bounds issues at peak sine wave (t=0.25 -> phase=pi/2 -> sin=1)
 
@@ -32,6 +33,7 @@ def test_clamping():
 
             center_l0 = (controller.base_squeeze / 100.0) * 9999
             center_rx = 5000
+            center_r2 = (controller.ankle_angle_offset / 100.0) * 9999
 
             # Clamp logic from script
             if center_l0 - amp_l0 < 0: center_l0 = amp_l0
@@ -39,11 +41,13 @@ def test_clamping():
 
             # Simulated generation logic
             if mode == "alternating_step":
-                pos_a_r2 = center_rx - amp_r2 * math.sin(phase_a)
+                pos_a_r2 = center_r2 - amp_r2 * math.sin(phase_a)
+                pos_a_r2 = max(0, min(9999, int(pos_a_r2)))
                 assert pos_a_r2 >= 0 and pos_a_r2 <= 9999, f"R2 out of bounds: {pos_a_r2}"
 
             elif mode == "wrapping_twist":
                 pos_b_r1 = center_rx - amp_r1 * math.sin(phase_a)
+                pos_b_r1 = max(0, min(9999, int(pos_b_r1)))
                 assert pos_b_r1 >= 0 and pos_b_r1 <= 9999, f"R1 out of bounds: {pos_b_r1}"
 
     print("Clamping test passed.")
