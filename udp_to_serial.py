@@ -1,4 +1,7 @@
 import socket
+
+import asyncio
+import websockets
 import time
 import argparse
 import logging
@@ -24,8 +27,58 @@ logger.setLevel(logging.INFO)
 # T-Code parsing regex (supports spaces)
 TCODE_REGEX = re.compile(r'([A-Z][0-9])\s*([0-9]+(?:\s*[IS][0-9]+)?)')
 
+
+class TCodeWSServer:
+    def __init__(self, port=8765):
+        self.port = port
+        self.clients = set()
+        self.loop = None
+        self.running = False
+        self.thread = None
+
+    async def _handler(self, websocket, path=None):
+        self.clients.add(websocket)
+        try:
+            await websocket.wait_closed()
+        finally:
+            self.clients.remove(websocket)
+
+    def _start_server(self):
+        self.loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(self.loop)
+
+        start_server = websockets.serve(self._handler, "0.0.0.0", self.port)
+        self.server = self.loop.run_until_complete(start_server)
+
+        logger.info(f"WebSocket server started on port {self.port}")
+        self.loop.run_forever()
+
+    def start(self):
+        if not self.running:
+            self.running = True
+            self.thread = threading.Thread(target=self._start_server, daemon=True)
+            self.thread.start()
+
+    def stop(self):
+        if self.running and self.loop:
+            self.running = False
+            self.loop.call_soon_threadsafe(self.server.close)
+            self.loop.call_soon_threadsafe(self.loop.stop)
+            logger.info("WebSocket server stopped")
+
+    def broadcast(self, message):
+        if not self.running or not self.clients or not self.loop:
+            return
+
+        async def _broadcast():
+            if self.clients:
+                await asyncio.gather(*[client.send(message) for client in self.clients], return_exceptions=True)
+
+        asyncio.run_coroutine_threadsafe(_broadcast(), self.loop)
+
 class UdpToSerialRelay:
-    def __init__(self, udp_ip: str, udp_port: int, serial_port: str, baud_rate: int, dummy: bool = False, verbose: bool = False):
+    def __init__(self, udp_ip: str, udp_port: int, serial_port: str, baud_rate: int, dummy: bool = False, verbose: bool = False, ws_server: TCodeWSServer = None):
+        self.ws_server = ws_server
         self.udp_ip = udp_ip
         self.udp_port = udp_port
         self.serial_port_name = serial_port
@@ -74,6 +127,8 @@ class UdpToSerialRelay:
         if not cmd_str.endswith('\n'):
             cmd_str += '\n'
         try:
+            if hasattr(self, 'ws_server') and self.ws_server:
+                self.ws_server.broadcast(cmd_str.strip())
             self.ser.write(cmd_str.encode())
         except Exception as e:
             logger.error(f"Serial send failed: {e}")
@@ -127,8 +182,11 @@ class UdpToSerialRelay:
                     
                     if packets:
                         merged_cmd = self.process_tcode_buffer(packets)
-                        if merged_cmd and not self.dummy and self.ser:
-                            self.ser.write(merged_cmd.encode())
+                        if merged_cmd:
+                            if self.ws_server:
+                                self.ws_server.broadcast(merged_cmd.strip())
+                            if not self.dummy and self.ser:
+                                self.ser.write(merged_cmd.encode())
                             if self.verbose:
                                 logger.info(f"-> {merged_cmd.strip()}")
 
@@ -241,6 +299,14 @@ class RelayGUI:
         self.dummy_mode = tk.BooleanVar(value=False)
         ttk.Checkbutton(row2, text="Dummy Mode", variable=self.dummy_mode).pack(side="left", padx=10)
 
+        self.enable_ws = tk.BooleanVar(value=True)
+        ttk.Checkbutton(row2, text="Enable WS", variable=self.enable_ws).pack(side="left", padx=10)
+        ttk.Label(row2, text="Port:").pack(side="left")
+        self.ws_port = tk.IntVar(value=8765)
+        ttk.Entry(row2, textvariable=self.ws_port, width=6).pack(side="left", padx=2)
+
+        self.ws_server = None
+
         # Live Control
         cmd_frame = ttk.LabelFrame(root, text="Live Control")
         cmd_frame.pack(fill="x", padx=10, pady=5)
@@ -294,10 +360,15 @@ class RelayGUI:
             self.cmd_input.set("")
 
     def start_service(self):
+        if self.enable_ws.get():
+            self.ws_server = TCodeWSServer(port=self.ws_port.get())
+            self.ws_server.start()
+
         self.relay = UdpToSerialRelay(
             self.udp_ip.get(), self.udp_port.get(),
             self.serial_port.get(), self.baud_rate.get(),
-            self.dummy_mode.get(), verbose=True
+            self.dummy_mode.get(), verbose=True,
+            ws_server=self.ws_server
         )
         self.thread = threading.Thread(target=self.run_relay_thread, daemon=True)
         self.thread.start()
@@ -310,6 +381,9 @@ class RelayGUI:
 
     def stop_service(self):
         if self.relay: self.relay.running = False
+        if self.ws_server:
+            self.ws_server.stop()
+            self.ws_server = None
 
     def reset_ui(self):
         self.start_btn.config(state="normal")
