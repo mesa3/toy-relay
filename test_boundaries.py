@@ -18,7 +18,7 @@ def test_clamping():
     import math
     import time
 
-    for mode in ["v_stroke", "alternating_step", "wrapping_twist", "sole_rub"]:
+    for mode in ["v_stroke", "alternating_step", "wrapping_twist", "sole_rub", "single_foot_tease_left", "single_foot_tease_right", "single_foot_stroke_left", "single_foot_stroke_right"]:
         controller.motion_mode = mode
 
         # Test extreme times
