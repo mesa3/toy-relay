@@ -78,6 +78,14 @@ class DualOSRController:
         self.offset = 50.0     # % (0-100)
         self.phase_shift = 180 # Degrees (0 = sync, 180 = alternating)
 
+        # New Motion Parameters
+        self.pitch_amp = 50.0  # R2
+        self.roll_amp = 50.0   # R1
+        self.twist_amp = 50.0  # R0
+        self.base_squeeze = 50.0 # Base L0 offset
+        self.motion_mode = "walk"
+
+
         # Device status
         self.connected_a = False
         self.connected_b = False
@@ -148,30 +156,83 @@ class DualOSRController:
         while self.running:
             start_time = time.time()
 
-            # Calculate positions based on sine wave
-            # Phase is in radians: 2*pi*f*t
-            # Amplitude is stroke/2
-            # Offset is center position
-
-            # Normalize inputs
-            amp = (self.stroke / 100.0) * 5000 # Amplitude in T-Code units (0-5000)
-            center = (self.offset / 100.0) * 10000 # Center in T-Code units (0-10000)
-
-            # Clamp center so stroke doesn't exceed 0-9999
-            if center - amp < 0: center = amp
-            if center + amp > 9999: center = 9999 - amp
-
-            # Calculate Phase A
             phase_a = 2 * math.pi * self.speed * t
-            pos_a = center + amp * math.sin(phase_a)
-
-            # Calculate Phase B (with shift)
             phase_b = phase_a + math.radians(self.phase_shift)
-            pos_b = center + amp * math.sin(phase_b)
 
-            # Format T-Code (L0 is main stroke)
-            cmd_a = f"L0{int(pos_a):04d} I20" # I20 is interpolation interval ~20ms
-            cmd_b = f"L0{int(pos_b):04d} I20"
+            # Amplitudes (0-5000)
+            amp_l0 = (self.stroke / 100.0) * 5000
+            amp_r2 = (self.pitch_amp / 100.0) * 5000
+            amp_r1 = (self.roll_amp / 100.0) * 5000
+            amp_r0 = (self.twist_amp / 100.0) * 5000
+
+            # Centers (0-9999)
+            center_l0 = (self.base_squeeze / 100.0) * 9999
+            center_rx = 5000
+
+            # Clamp L0
+            if center_l0 - amp_l0 < 0: center_l0 = amp_l0
+            if center_l0 + amp_l0 > 9999: center_l0 = 9999 - amp_l0
+
+            cmd_a_parts = []
+            cmd_b_parts = []
+
+            if self.motion_mode == "walk":
+                pos_a = center_l0 + amp_l0 * math.sin(phase_a)
+                pos_b = center_l0 + amp_l0 * math.sin(phase_b)
+                cmd_a_parts.append(f"L0{int(pos_a):04d}")
+                cmd_b_parts.append(f"L0{int(pos_b):04d}")
+
+            elif self.motion_mode == "squeeze_rub":
+                # Sync L0 squeeze, alternating R2 pitch
+                pos_l0 = center_l0 + amp_l0 * math.sin(phase_a)
+                pos_a_r2 = center_rx + amp_r2 * math.sin(phase_a)
+                pos_b_r2 = center_rx + amp_r2 * math.sin(phase_b)
+
+                cmd_a_parts.extend([f"L0{int(pos_l0):04d}", f"R2{int(pos_a_r2):04d}"])
+                cmd_b_parts.extend([f"L0{int(pos_l0):04d}", f"R2{int(pos_b_r2):04d}"])
+
+            elif self.motion_mode == "ankle_massage":
+                # Hold L0 squeeze, alternating R1 roll
+                pos_a_r1 = center_rx + amp_r1 * math.sin(phase_a)
+                pos_b_r1 = center_rx + amp_r1 * math.sin(phase_b)
+
+                cmd_a_parts.extend([f"L0{int(center_l0):04d}", f"R1{int(pos_a_r1):04d}"])
+                cmd_b_parts.extend([f"L0{int(center_l0):04d}", f"R1{int(pos_b_r1):04d}"])
+
+            elif self.motion_mode == "stepping":
+                # Alternating L0 and Alternating R2 (pitching down while stepping)
+                pos_a_l0 = center_l0 + amp_l0 * math.sin(phase_a)
+                pos_b_l0 = center_l0 + amp_l0 * math.sin(phase_b)
+
+                # Pitch correlates with stroke (toe points down when pushing out)
+                pos_a_r2 = center_rx + amp_r2 * math.cos(phase_a)
+                pos_b_r2 = center_rx + amp_r2 * math.cos(phase_b)
+
+                cmd_a_parts.extend([f"L0{int(pos_a_l0):04d}", f"R2{int(pos_a_r2):04d}"])
+                cmd_b_parts.extend([f"L0{int(pos_b_l0):04d}", f"R2{int(pos_b_r2):04d}"])
+
+            elif self.motion_mode == "twisting":
+                # Alternating R0 twist and R1 roll, gentle L0 sync
+                pos_l0 = center_l0 + (amp_l0 * 0.5) * math.sin(phase_a)
+
+                pos_a_r0 = center_rx + amp_r0 * math.sin(phase_a)
+                pos_b_r0 = center_rx + amp_r0 * math.sin(phase_b)
+
+                pos_a_r1 = center_rx + amp_r1 * math.cos(phase_a)
+                pos_b_r1 = center_rx + amp_r1 * math.cos(phase_b)
+
+                cmd_a_parts.extend([f"L0{int(pos_l0):04d}", f"R0{int(pos_a_r0):04d}", f"R1{int(pos_a_r1):04d}"])
+                cmd_b_parts.extend([f"L0{int(pos_l0):04d}", f"R0{int(pos_b_r0):04d}", f"R1{int(pos_b_r1):04d}"])
+
+            else:
+                pos_a = center_l0 + amp_l0 * math.sin(phase_a)
+                pos_b = center_l0 + amp_l0 * math.sin(phase_b)
+                cmd_a_parts.append(f"L0{int(pos_a):04d}")
+                cmd_b_parts.append(f"L0{int(pos_b):04d}")
+
+            # Add timing interval
+            cmd_a = " ".join(cmd_a_parts) + " I20"
+            cmd_b = " ".join(cmd_b_parts) + " I20"
 
             self._send_cmd(self.ser_a, cmd_a, self.ws_server_a)
             self._send_cmd(self.ser_b, cmd_b, self.ws_server_b)
@@ -193,7 +254,7 @@ class DualOSRGui:
     def __init__(self, root):
         self.root = root
         self.root.title("Dual OSR Footjob Simulator")
-        self.root.geometry("600x700")
+        self.root.geometry("600x850")
         self.controller = DualOSRController()
 
         self.create_widgets()
@@ -253,24 +314,48 @@ class DualOSRGui:
         self.speed_scale = ttk.Scale(ctrl_frame, from_=0.1, to=5.0, variable=self.speed_var, command=self.update_params)
         self.speed_scale.pack(fill="x", padx=5, pady=2)
 
-        # Stroke
-        ttk.Label(ctrl_frame, text="Stroke Length (%):").pack(anchor="w", padx=5)
+        # Mode Selection
+        mode_frame = ttk.Frame(ctrl_frame)
+        mode_frame.pack(fill="x", padx=5, pady=5)
+        ttk.Label(mode_frame, text="Motion Mode:").pack(side="left")
+        self.mode_var = tk.StringVar(value="walk")
+        modes = ["walk", "squeeze_rub", "ankle_massage", "stepping", "twisting"]
+        self.mode_combo = ttk.Combobox(mode_frame, textvariable=self.mode_var, values=modes, state="readonly")
+        self.mode_combo.pack(side="left", padx=5)
+        self.mode_combo.bind("<<ComboboxSelected>>", self.update_params)
+
+        # Stroke / Base Squeeze (L0)
+        ttk.Label(ctrl_frame, text="L0 Stroke Length (%):").pack(anchor="w", padx=5)
         self.stroke_var = tk.DoubleVar(value=50.0)
         self.stroke_scale = ttk.Scale(ctrl_frame, from_=0.0, to=100.0, variable=self.stroke_var, command=self.update_params)
         self.stroke_scale.pack(fill="x", padx=5, pady=2)
 
-        # Offset
-        ttk.Label(ctrl_frame, text="Center Offset (%):").pack(anchor="w", padx=5)
-        self.offset_var = tk.DoubleVar(value=50.0)
-        self.offset_scale = ttk.Scale(ctrl_frame, from_=0.0, to=100.0, variable=self.offset_var, command=self.update_params)
-        self.offset_scale.pack(fill="x", padx=5, pady=2)
+        ttk.Label(ctrl_frame, text="L0 Base Squeeze Offset (%):").pack(anchor="w", padx=5)
+        self.base_squeeze_var = tk.DoubleVar(value=50.0)
+        self.base_squeeze_scale = ttk.Scale(ctrl_frame, from_=0.0, to=100.0, variable=self.base_squeeze_var, command=self.update_params)
+        self.base_squeeze_scale.pack(fill="x", padx=5, pady=2)
 
-        # Mode (Sync vs Alternating)
-        mode_frame = ttk.Frame(ctrl_frame)
-        mode_frame.pack(fill="x", padx=5, pady=10)
-        self.mode_var = tk.StringVar(value="alternating")
-        ttk.Radiobutton(mode_frame, text="Alternating (Walk)", variable=self.mode_var, value="alternating", command=self.update_params).pack(side="left", padx=10)
-        ttk.Radiobutton(mode_frame, text="Sync (Jump)", variable=self.mode_var, value="sync", command=self.update_params).pack(side="left", padx=10)
+        # Advanced Axes
+        adv_frame = ttk.LabelFrame(ctrl_frame, text="Advanced Axes (Depends on Mode)")
+        adv_frame.pack(fill="x", padx=5, pady=5)
+
+        # Pitch (R2)
+        ttk.Label(adv_frame, text="Pitch Amplitude R2 (%):").pack(anchor="w", padx=5)
+        self.pitch_amp_var = tk.DoubleVar(value=50.0)
+        self.pitch_scale = ttk.Scale(adv_frame, from_=0.0, to=100.0, variable=self.pitch_amp_var, command=self.update_params)
+        self.pitch_scale.pack(fill="x", padx=5, pady=2)
+
+        # Roll (R1)
+        ttk.Label(adv_frame, text="Roll Amplitude R1 (%):").pack(anchor="w", padx=5)
+        self.roll_amp_var = tk.DoubleVar(value=50.0)
+        self.roll_scale = ttk.Scale(adv_frame, from_=0.0, to=100.0, variable=self.roll_amp_var, command=self.update_params)
+        self.roll_scale.pack(fill="x", padx=5, pady=2)
+
+        # Twist (R0)
+        ttk.Label(adv_frame, text="Twist Amplitude R0 (%):").pack(anchor="w", padx=5)
+        self.twist_amp_var = tk.DoubleVar(value=50.0)
+        self.twist_scale = ttk.Scale(adv_frame, from_=0.0, to=100.0, variable=self.twist_amp_var, command=self.update_params)
+        self.twist_scale.pack(fill="x", padx=5, pady=2)
 
         # Start/Stop
         self.btn_start = ttk.Button(self.root, text="START MOTION", command=self.toggle_motion)
@@ -320,11 +405,19 @@ class DualOSRGui:
     def update_params(self, _=None):
         self.controller.speed = self.speed_var.get()
         self.controller.stroke = self.stroke_var.get()
-        self.controller.offset = self.offset_var.get()
-        if self.mode_var.get() == "sync":
-            self.controller.phase_shift = 0
+        self.controller.base_squeeze = self.base_squeeze_var.get()
+        self.controller.pitch_amp = self.pitch_amp_var.get()
+        self.controller.roll_amp = self.roll_amp_var.get()
+        self.controller.twist_amp = self.twist_amp_var.get()
+
+        mode = self.mode_var.get()
+        self.controller.motion_mode = mode
+
+        # In twisting or squeeze mode, they often operate in sync or have specialized phase handling
+        if mode == "squeeze_rub":
+            self.controller.phase_shift = 0  # Sync L0
         else:
-            self.controller.phase_shift = 180
+            self.controller.phase_shift = 180 # Alternating L0
 
     def toggle_motion(self):
         if not self.controller.running:
