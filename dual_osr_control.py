@@ -7,12 +7,65 @@ import time
 import math
 import logging
 
+import asyncio
+import websockets
+
+class TCodeWSServer:
+    def __init__(self, port=8766):
+        self.port = port
+        self.clients = set()
+        self.loop = None
+        self.running = False
+        self.thread = None
+
+    async def _handler(self, websocket, path=None):
+        self.clients.add(websocket)
+        try:
+            await websocket.wait_closed()
+        finally:
+            self.clients.remove(websocket)
+
+    def _start_server(self):
+        self.loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(self.loop)
+
+        start_server = websockets.serve(self._handler, "0.0.0.0", self.port)
+        self.server = self.loop.run_until_complete(start_server)
+
+        logger.info(f"WebSocket server started on port {self.port}")
+        self.loop.run_forever()
+
+    def start(self):
+        if not self.running:
+            self.running = True
+            self.thread = threading.Thread(target=self._start_server, daemon=True)
+            self.thread.start()
+
+    def stop(self):
+        if self.running and self.loop:
+            self.running = False
+            self.loop.call_soon_threadsafe(self.server.close)
+            self.loop.call_soon_threadsafe(self.loop.stop)
+            logger.info("WebSocket server stopped")
+
+    def broadcast(self, message):
+        if not self.running or not self.clients or not self.loop:
+            return
+
+        async def _broadcast():
+            if self.clients:
+                await asyncio.gather(*[client.send(message) for client in self.clients], return_exceptions=True)
+
+        asyncio.run_coroutine_threadsafe(_broadcast(), self.loop)
+
+
 # Configure logging
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(message)s')
 logger = logging.getLogger(__name__)
 
 class DualOSRController:
     def __init__(self):
+        self.ws_server = None
         self.ser_a = None
         self.ser_b = None
         self.running = False
@@ -79,6 +132,8 @@ class DualOSRController:
         logger.info("Motion stopping...")
 
     def _send_cmd(self, ser, cmd):
+        if self.ws_server:
+            self.ws_server.broadcast(f"{cmd}\n")
         if ser and ser.is_open:
             try:
                 ser.write(f"{cmd}\n".encode())
@@ -143,6 +198,20 @@ class DualOSRGui:
         self.create_widgets()
 
     def create_widgets(self):
+        # --- WebSocket Section ---
+        ws_frame = ttk.LabelFrame(self.root, text="WebSocket Server")
+        ws_frame.pack(fill="x", padx=10, pady=5)
+
+        row_ws = ttk.Frame(ws_frame)
+        row_ws.pack(fill="x", padx=5, pady=2)
+
+        self.enable_ws = tk.BooleanVar(value=True)
+        ttk.Checkbutton(row_ws, text="Enable WS Server", variable=self.enable_ws).pack(side="left", padx=5)
+
+        ttk.Label(row_ws, text="Port:").pack(side="left")
+        self.ws_port = tk.IntVar(value=8766)
+        ttk.Entry(row_ws, textvariable=self.ws_port, width=6).pack(side="left", padx=5)
+
         # --- Connection Section ---
         conn_frame = ttk.LabelFrame(self.root, text="Connections")
         conn_frame.pack(fill="x", padx=10, pady=5)
@@ -254,11 +323,22 @@ class DualOSRGui:
 
     def toggle_motion(self):
         if not self.controller.running:
+            if self.enable_ws.get():
+                if not self.controller.ws_server:
+                    self.controller.ws_server = TCodeWSServer(port=self.ws_port.get())
+                self.controller.ws_server.start()
+            else:
+                if self.controller.ws_server:
+                    self.controller.ws_server.stop()
+                    self.controller.ws_server = None
+
             self.update_params() # Ensure latest params are set
             self.controller.start_motion()
             self.btn_start.config(text="STOP MOTION")
         else:
             self.controller.stop_motion()
+            if self.controller.ws_server:
+                self.controller.ws_server.stop()
             self.btn_start.config(text="START MOTION")
 
 class TextHandler(logging.Handler):
