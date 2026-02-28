@@ -65,7 +65,8 @@ logger = logging.getLogger(__name__)
 
 class DualOSRController:
     def __init__(self):
-        self.ws_server = None
+        self.ws_server_a = None
+        self.ws_server_b = None
         self.ser_a = None
         self.ser_b = None
         self.running = False
@@ -131,9 +132,9 @@ class DualOSRController:
         self.running = False
         logger.info("Motion stopping...")
 
-    def _send_cmd(self, ser, cmd):
-        if self.ws_server:
-            self.ws_server.broadcast(f"{cmd}\n")
+    def _send_cmd(self, ser, cmd, ws_server=None):
+        if ws_server:
+            ws_server.broadcast(f"{cmd}\n")
         if ser and ser.is_open:
             try:
                 ser.write(f"{cmd}\n".encode())
@@ -172,8 +173,8 @@ class DualOSRController:
             cmd_a = f"L0{int(pos_a):04d} I20" # I20 is interpolation interval ~20ms
             cmd_b = f"L0{int(pos_b):04d} I20"
 
-            self._send_cmd(self.ser_a, cmd_a)
-            self._send_cmd(self.ser_b, cmd_b)
+            self._send_cmd(self.ser_a, cmd_a, self.ws_server_a)
+            self._send_cmd(self.ser_b, cmd_b, self.ws_server_b)
 
             # Update time
             t += dt
@@ -184,8 +185,8 @@ class DualOSRController:
             time.sleep(sleep_time)
 
         # Center devices on stop
-        self._send_cmd(self.ser_a, "L05000 I1000")
-        self._send_cmd(self.ser_b, "L05000 I1000")
+        self._send_cmd(self.ser_a, "L05000 I1000", self.ws_server_a)
+        self._send_cmd(self.ser_b, "L05000 I1000", self.ws_server_b)
         logger.info("Motion stopped and devices centered")
 
 class DualOSRGui:
@@ -199,18 +200,22 @@ class DualOSRGui:
 
     def create_widgets(self):
         # --- WebSocket Section ---
-        ws_frame = ttk.LabelFrame(self.root, text="WebSocket Server")
+        ws_frame = ttk.LabelFrame(self.root, text="WebSocket Servers")
         ws_frame.pack(fill="x", padx=10, pady=5)
 
         row_ws = ttk.Frame(ws_frame)
         row_ws.pack(fill="x", padx=5, pady=2)
 
         self.enable_ws = tk.BooleanVar(value=True)
-        ttk.Checkbutton(row_ws, text="Enable WS Server", variable=self.enable_ws).pack(side="left", padx=5)
+        ttk.Checkbutton(row_ws, text="Enable WS Servers", variable=self.enable_ws).pack(side="left", padx=5)
 
-        ttk.Label(row_ws, text="Port:").pack(side="left")
-        self.ws_port = tk.IntVar(value=8766)
-        ttk.Entry(row_ws, textvariable=self.ws_port, width=6).pack(side="left", padx=5)
+        ttk.Label(row_ws, text="Port A:").pack(side="left", padx=(10, 2))
+        self.ws_port_a = tk.IntVar(value=8766)
+        ttk.Entry(row_ws, textvariable=self.ws_port_a, width=6).pack(side="left")
+
+        ttk.Label(row_ws, text="Port B:").pack(side="left", padx=(10, 2))
+        self.ws_port_b = tk.IntVar(value=8767)
+        ttk.Entry(row_ws, textvariable=self.ws_port_b, width=6).pack(side="left")
 
         # --- Connection Section ---
         conn_frame = ttk.LabelFrame(self.root, text="Connections")
@@ -324,21 +329,29 @@ class DualOSRGui:
     def toggle_motion(self):
         if not self.controller.running:
             if self.enable_ws.get():
-                if not self.controller.ws_server:
-                    self.controller.ws_server = TCodeWSServer(port=self.ws_port.get())
-                self.controller.ws_server.start()
+                if not self.controller.ws_server_a:
+                    self.controller.ws_server_a = TCodeWSServer(port=self.ws_port_a.get())
+                if not self.controller.ws_server_b:
+                    self.controller.ws_server_b = TCodeWSServer(port=self.ws_port_b.get())
+                self.controller.ws_server_a.start()
+                self.controller.ws_server_b.start()
             else:
-                if self.controller.ws_server:
-                    self.controller.ws_server.stop()
-                    self.controller.ws_server = None
+                if self.controller.ws_server_a:
+                    self.controller.ws_server_a.stop()
+                    self.controller.ws_server_a = None
+                if self.controller.ws_server_b:
+                    self.controller.ws_server_b.stop()
+                    self.controller.ws_server_b = None
 
             self.update_params() # Ensure latest params are set
             self.controller.start_motion()
             self.btn_start.config(text="STOP MOTION")
         else:
             self.controller.stop_motion()
-            if self.controller.ws_server:
-                self.controller.ws_server.stop()
+            if self.controller.ws_server_a:
+                self.controller.ws_server_a.stop()
+            if self.controller.ws_server_b:
+                self.controller.ws_server_b.stop()
             self.btn_start.config(text="START MOTION")
 
 class TextHandler(logging.Handler):
