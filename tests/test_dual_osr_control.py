@@ -16,7 +16,7 @@ class TestDualOSRController(unittest.TestCase):
         self.controller.ws_server_b = MagicMock()
 
     def test_default_init(self):
-        self.assertEqual(self.controller.motion_mode, "walk")
+        self.assertEqual(self.controller.motion_mode, "v_stroke")
         self.assertEqual(self.controller.pitch_amp, 50.0)
 
     def test_modes_dont_crash(self):
@@ -30,7 +30,7 @@ class TestDualOSRController(unittest.TestCase):
         self.controller._send_cmd = mock_send
         self.controller.running = True
 
-        modes = ["walk", "squeeze_rub", "ankle_massage", "stepping", "twisting"]
+        modes = ["v_stroke", "squeeze_rub", "ankle_massage", "stepping", "twisting"]
         for mode in modes:
             self.controller.motion_mode = mode
             self.commands_sent = []
