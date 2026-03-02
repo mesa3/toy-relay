@@ -233,6 +233,20 @@ class DualOSRController:
 
                 cmd_a_parts.extend([f"L0{clamp(pos_l0):04d}", f"L2{clamp(pos_a_l2):04d}", f"R2{clamp(pos_a_r2):04d}", f"R1{clamp(center_r1):04d}"])
                 cmd_b_parts.extend([f"L0{clamp(pos_l0):04d}", f"L2{clamp(pos_b_l2):04d}", f"R2{clamp(pos_b_r2):04d}", f"R1{clamp(center_r1):04d}"])
+
+            elif self.motion_mode == "static_rub_front_back":
+                # Static front-back rubbing (原地前后波浪形揉搓)
+                # No vertical movement. R2 (Pitch) pitches the toe/heel against the shaft.
+                pos_l0 = center_l0
+                pos_a_l2 = center_l2
+                pos_b_l2 = center_l2
+
+                # R2 pitches dynamically to wipe front/back
+                pos_a_r2 = center_r2 + amp_r2 * math.cos(phase_a)
+                pos_b_r2 = center_r2 - amp_r2 * math.cos(phase_a) # Mirror pitch
+
+                cmd_a_parts.extend([f"L0{clamp(pos_l0):04d}", f"L2{clamp(pos_a_l2):04d}", f"R2{clamp(pos_a_r2):04d}", f"R1{clamp(center_r1):04d}"])
+                cmd_b_parts.extend([f"L0{clamp(pos_l0):04d}", f"L2{clamp(pos_b_l2):04d}", f"R2{clamp(pos_b_r2):04d}", f"R1{clamp(center_r1):04d}"])
             elif self.motion_mode == "alternating_step":
                 # Alternating strokes with parallel L2 compensation
                 z_motion_a = amp_l0 * math.sin(phase_a)
@@ -495,7 +509,7 @@ class DualOSRGui:
         modes = [
             "v_stroke", "alternating_step", "wrapping_twist", "sole_rub",
             "toe_tease", "edge_stroking", "heel_press", "circling_tease",
-            "wave_rub_up_down", "wave_rub_front_back",
+            "wave_rub_up_down", "wave_rub_front_back", "static_rub_front_back",
             "single_foot_tease_left", "single_foot_tease_right",
             "single_foot_stroke_left", "single_foot_stroke_right"
         ]
@@ -613,7 +627,7 @@ class DualOSRGui:
 
         # In some modes, we want synchronous base loops
         if mode in ["v_stroke", "wrapping_twist", "sole_rub", "edge_stroking", "heel_press", "circling_tease", "toe_tease",
-                    "wave_rub_up_down", "wave_rub_front_back",
+                    "wave_rub_up_down", "wave_rub_front_back", "static_rub_front_back", "static_rub_front_back",
                     "single_foot_tease_left", "single_foot_tease_right", "single_foot_stroke_left", "single_foot_stroke_right"]:
             self.controller.phase_shift = 0   # Base phase sync (modes handle mirroring internally if needed)
         else:
