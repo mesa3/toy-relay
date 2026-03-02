@@ -3,8 +3,22 @@ from unittest.mock import MagicMock, patch
 import sys
 import os
 
-# Ensure the current directory is in the path to import udp_to_serial
-sys.path.append(os.getcwd())
+# Use absolute paths to ensure the module under test is importable
+# regardless of where the test is run from.
+PROJECT_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))
+if PROJECT_ROOT not in sys.path:
+    sys.path.insert(0, PROJECT_ROOT)
+
+# Mocking modules that might be missing in the environment
+def setup_mocks():
+    mock_serial = MagicMock()
+    mock_serial_tools = MagicMock()
+    sys.modules['serial'] = mock_serial
+    sys.modules['serial.tools'] = mock_serial_tools
+    sys.modules['serial.tools.list_ports'] = MagicMock()
+    sys.modules['websockets'] = MagicMock()
+
+setup_mocks()
 
 from udp_to_serial import UdpToSerialRelay
 
