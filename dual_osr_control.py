@@ -154,6 +154,11 @@ class DualOSRController:
         t = 0.0
         dt = 0.02 # 50Hz update rate
 
+        # ⚡ Optimized: Function defined once outside the 50Hz hot loop
+        # to prevent redundant function object creation and garbage collection overhead
+        def clamp(val):
+            return max(0, min(9999, int(val)))
+
         while self.running:
             start_time = time.time()
 
@@ -174,9 +179,6 @@ class DualOSRController:
             # Clamp L0
             if center_l0 - amp_l0 < 0: center_l0 = amp_l0
             if center_l0 + amp_l0 > 9999: center_l0 = 9999 - amp_l0
-
-            def clamp(val):
-                return max(0, min(9999, int(val)))
 
             cmd_a_parts = []
             cmd_b_parts = []

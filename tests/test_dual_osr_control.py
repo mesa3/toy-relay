@@ -162,8 +162,16 @@ class TestDualOSRGui(unittest.TestCase):
             gui.speed_var.get.return_value = 2.0
             gui.stroke_var = MagicMock()
             gui.stroke_var.get.return_value = 75.0
-            gui.offset_var = MagicMock()
-            gui.offset_var.get.return_value = 25.0
+            gui.base_squeeze_var = MagicMock()
+            gui.base_squeeze_var.get.return_value = 25.0
+            gui.ankle_offset_var = MagicMock()
+            gui.ankle_offset_var.get.return_value = 10.0
+            gui.pitch_amp_var = MagicMock()
+            gui.pitch_amp_var.get.return_value = 11.0
+            gui.roll_amp_var = MagicMock()
+            gui.roll_amp_var.get.return_value = 12.0
+            gui.twist_amp_var = MagicMock()
+            gui.twist_amp_var.get.return_value = 13.0
             gui.mode_var = MagicMock()
             gui.mode_var.get.return_value = "sync"
 
@@ -171,8 +179,12 @@ class TestDualOSRGui(unittest.TestCase):
 
             self.assertEqual(gui.controller.speed, 2.0)
             self.assertEqual(gui.controller.stroke, 75.0)
-            self.assertEqual(gui.controller.offset, 25.0)
-            self.assertEqual(gui.controller.phase_shift, 0)
+            self.assertEqual(gui.controller.base_squeeze, 25.0)
+            self.assertEqual(gui.controller.ankle_angle_offset, 10.0)
+            self.assertEqual(gui.controller.pitch_amp, 11.0)
+            self.assertEqual(gui.controller.roll_amp, 12.0)
+            self.assertEqual(gui.controller.twist_amp, 13.0)
+            self.assertEqual(gui.controller.phase_shift, 180) # sync mode isn't in the list of synchronous modes, so it defaults to 180
 
 if __name__ == '__main__':
     unittest.main()

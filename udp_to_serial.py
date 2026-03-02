@@ -182,12 +182,15 @@ class UdpToSerialRelay:
                             if data:
                                 packets.append(data)
                                 self.last_udp_addr = addr
-                                self.last_receive_time = time.time()
-                                self.watchdog_triggered = False
                         except:
                             break
                     
                     if packets:
+                        # ⚡ Optimized: Update time/watchdog once per batch instead of per packet
+                        # to reduce system calls inside the tight inner buffer-draining loop
+                        self.last_receive_time = time.time()
+                        self.watchdog_triggered = False
+
                         merged_cmd = self.process_tcode_buffer(packets)
                         if merged_cmd:
                             if self.ws_server:
