@@ -176,6 +176,8 @@ class TestDualOSRGui(unittest.TestCase):
             gui.base_squeeze_var.get.return_value = 50.0
             gui.ankle_offset_var = MagicMock()
             gui.ankle_offset_var.get.return_value = 50.0
+            gui.roll_offset_var = MagicMock()
+            gui.roll_offset_var.get.return_value = 50.0
             gui.reverse_l2_var = MagicMock()
             gui.reverse_l2_var.get.return_value = True
 
@@ -185,6 +187,7 @@ class TestDualOSRGui(unittest.TestCase):
             self.assertEqual(gui.controller.stroke, 75.0)
             self.assertEqual(gui.controller.base_squeeze, 50.0)
             self.assertEqual(gui.controller.ankle_angle_offset, 50.0)
+            self.assertEqual(gui.controller.roll_angle_offset, 50.0)
             self.assertEqual(gui.controller.pitch_amp, 50.0)
             self.assertEqual(gui.controller.roll_amp, 50.0)
             self.assertEqual(gui.controller.twist_amp, 50.0)

@@ -84,6 +84,7 @@ class DualOSRController:
         self.twist_amp = 50.0  # R0
         self.base_squeeze = 50.0 # Base L0 offset
         self.ankle_angle_offset = 50.0 # Base R2 offset
+        self.roll_angle_offset = 50.0 # Base R1 offset
         self.motion_mode = "v_stroke"
         self.reverse_l2 = False # Reverse L2 compensation direction
 
@@ -196,8 +197,8 @@ class DualOSRController:
                 pos_a_l2 = center_l2 - (z_motion * l2_mult)
                 pos_b_l2 = center_l2 + (z_motion * l2_mult)
 
-                cmd_a_parts.extend([f"L0{clamp(pos_l0):04d}", f"L2{clamp(pos_a_l2):04d}", f"R2{clamp(center_r2):04d}", f"R1{clamp(center_rx):04d}"])
-                cmd_b_parts.extend([f"L0{clamp(pos_l0):04d}", f"L2{clamp(pos_b_l2):04d}", f"R2{clamp(center_r2):04d}", f"R1{clamp(center_rx):04d}"])
+                cmd_a_parts.extend([f"L0{clamp(pos_l0):04d}", f"L2{clamp(pos_a_l2):04d}", f"R2{clamp(center_r2):04d}", f"R1{clamp(center_r1):04d}"])
+                cmd_b_parts.extend([f"L0{clamp(pos_l0):04d}", f"L2{clamp(pos_b_l2):04d}", f"R2{clamp(center_r2):04d}", f"R1{clamp(center_r1):04d}"])
 
 
             elif self.motion_mode == "wave_rub_up_down":
@@ -229,8 +230,8 @@ class DualOSRController:
                 pos_a_r2 = center_r2 + amp_r2 * math.cos(phase_a)
                 pos_b_r2 = center_r2 - amp_r2 * math.cos(phase_a) # Mirror pitch
 
-                cmd_a_parts.extend([f"L0{clamp(pos_l0):04d}", f"L2{clamp(pos_a_l2):04d}", f"R2{clamp(pos_a_r2):04d}", f"R1{clamp(center_rx):04d}"])
-                cmd_b_parts.extend([f"L0{clamp(pos_l0):04d}", f"L2{clamp(pos_b_l2):04d}", f"R2{clamp(pos_b_r2):04d}", f"R1{clamp(center_rx):04d}"])
+                cmd_a_parts.extend([f"L0{clamp(pos_l0):04d}", f"L2{clamp(pos_a_l2):04d}", f"R2{clamp(pos_a_r2):04d}", f"R1{clamp(center_r1):04d}"])
+                cmd_b_parts.extend([f"L0{clamp(pos_l0):04d}", f"L2{clamp(pos_b_l2):04d}", f"R2{clamp(pos_b_r2):04d}", f"R1{clamp(center_r1):04d}"])
             elif self.motion_mode == "alternating_step":
                 # Alternating strokes with parallel L2 compensation
                 z_motion_a = amp_l0 * math.sin(phase_a)
@@ -522,6 +523,12 @@ class DualOSRGui:
         self.ankle_scale = ttk.Scale(adv_frame, from_=0.0, to=100.0, variable=self.ankle_offset_var, command=self.update_params)
         self.ankle_scale.pack(fill="x", padx=5, pady=2)
 
+        # Ankle Roll Offset (R1 Base)
+        ttk.Label(adv_frame, text="Ankle Roll Offset R1 Base (%):").pack(anchor="w", padx=5)
+        self.roll_offset_var = tk.DoubleVar(value=50.0)
+        self.roll_offset_scale = ttk.Scale(adv_frame, from_=0.0, to=100.0, variable=self.roll_offset_var, command=self.update_params)
+        self.roll_offset_scale.pack(fill="x", padx=5, pady=2)
+
         # Pitch (R2)
         ttk.Label(adv_frame, text="Pitch Amplitude R2 (%):").pack(anchor="w", padx=5)
         self.pitch_amp_var = tk.DoubleVar(value=50.0)
@@ -594,6 +601,7 @@ class DualOSRGui:
         self.controller.stroke = self.stroke_var.get()
         self.controller.base_squeeze = self.base_squeeze_var.get()
         self.controller.ankle_angle_offset = self.ankle_offset_var.get()
+        self.controller.roll_angle_offset = self.roll_offset_var.get()
         self.controller.pitch_amp = self.pitch_amp_var.get()
         self.controller.roll_amp = self.roll_amp_var.get()
         self.controller.twist_amp = self.twist_amp_var.get()
