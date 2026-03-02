@@ -85,6 +85,7 @@ class DualOSRController:
         self.base_squeeze = 50.0 # Base L0 offset
         self.ankle_angle_offset = 50.0 # Base R2 offset
         self.motion_mode = "v_stroke"
+        self.reverse_l2 = False # Reverse L2 compensation direction
 
 
         # Device status
@@ -177,6 +178,9 @@ class DualOSRController:
             if center_l0 - amp_l0 < 0: center_l0 = amp_l0
             if center_l0 + amp_l0 > 9999: center_l0 = 9999 - amp_l0
 
+            # L2 Compensation direction multiplier (based on wall mount orientation)
+            l2_mult = -1.0 if self.reverse_l2 else 1.0
+
             def clamp(val):
                 return max(0, min(9999, int(val)))
 
@@ -212,8 +216,8 @@ class DualOSRController:
                 pos_a_l0 = center_l0 + z_motion_a
                 pos_b_l0 = center_l0 + z_motion_b
 
-                pos_a_l2 = center_l2 - z_motion_a
-                pos_b_l2 = center_l2 + z_motion_b
+                pos_a_l2 = center_l2 - (z_motion_a * l2_mult)
+                pos_b_l2 = center_l2 + (z_motion_b * l2_mult)
 
                 # Dynamic Alternating Kneading
                 pos_a_r2 = center_r2 + amp_r2 * math.cos(phase_a)
@@ -277,8 +281,8 @@ class DualOSRController:
                 pos_l0 = center_l0 + z_motion
 
                 # Compensate laterally
-                pos_a_l2 = center_l2 - z_motion
-                pos_b_l2 = center_l2 + z_motion
+                pos_a_l2 = center_l2 - (z_motion * l2_mult)
+                pos_b_l2 = center_l2 + (z_motion * l2_mult)
 
                 # Fix pitch to stay parallel instead of bobbing up and down
                 pos_r2 = center_r2
@@ -321,7 +325,7 @@ class DualOSRController:
 
                 z_motion_a = (amp_l0 * 0.1) * math.sin(phase_a)
                 pos_a_l0 = center_l0 + z_motion_a
-                pos_a_l2 = center_l2 - z_motion_a
+                pos_a_l2 = center_l2 - (z_motion_a * l2_mult)
 
                 # Static Right (Device B)
                 pos_b_r2 = center_r2
@@ -349,7 +353,7 @@ class DualOSRController:
             elif self.motion_mode == "single_foot_stroke_left":
                 z_motion_a = amp_l0 * math.sin(phase_a)
                 pos_a_l0 = center_l0 + z_motion_a
-                pos_a_l2 = center_l2 - z_motion_a
+                pos_a_l2 = center_l2 - (z_motion_a * l2_mult)
 
                 pos_b_l0 = center_l0
                 pos_b_l2 = center_l2
@@ -363,7 +367,7 @@ class DualOSRController:
 
                 z_motion_b = amp_l0 * math.sin(phase_a) # Use phase_a for the active foot
                 pos_b_l0 = center_l0 + z_motion_b
-                pos_b_l2 = center_l2 + z_motion_b
+                pos_b_l2 = center_l2 + (z_motion_b * l2_mult)
 
                 cmd_a_parts.extend([f"L0{clamp(pos_a_l0):04d}", f"L2{clamp(pos_a_l2):04d}", f"R2{clamp(center_r2):04d}"])
                 cmd_b_parts.extend([f"L0{clamp(pos_b_l0):04d}", f"L2{clamp(pos_b_l2):04d}", f"R2{clamp(center_r2):04d}"])
@@ -565,6 +569,7 @@ class DualOSRGui:
         self.controller.pitch_amp = self.pitch_amp_var.get()
         self.controller.roll_amp = self.roll_amp_var.get()
         self.controller.twist_amp = self.twist_amp_var.get()
+        self.controller.reverse_l2 = self.reverse_l2_var.get()
 
         mode = self.mode_var.get()
         self.controller.motion_mode = mode
