@@ -166,13 +166,27 @@ class TestDualOSRGui(unittest.TestCase):
             gui.offset_var.get.return_value = 25.0
             gui.mode_var = MagicMock()
             gui.mode_var.get.return_value = "sync"
+            gui.pitch_amp_var = MagicMock()
+            gui.pitch_amp_var.get.return_value = 50.0
+            gui.roll_amp_var = MagicMock()
+            gui.roll_amp_var.get.return_value = 50.0
+            gui.twist_amp_var = MagicMock()
+            gui.twist_amp_var.get.return_value = 50.0
+            gui.base_squeeze_var = MagicMock()
+            gui.base_squeeze_var.get.return_value = 50.0
+            gui.ankle_offset_var = MagicMock()
+            gui.ankle_offset_var.get.return_value = 50.0
 
             gui.update_params()
 
             self.assertEqual(gui.controller.speed, 2.0)
             self.assertEqual(gui.controller.stroke, 75.0)
-            self.assertEqual(gui.controller.offset, 25.0)
-            self.assertEqual(gui.controller.phase_shift, 0)
+            self.assertEqual(gui.controller.base_squeeze, 50.0)
+            self.assertEqual(gui.controller.ankle_angle_offset, 50.0)
+            self.assertEqual(gui.controller.pitch_amp, 50.0)
+            self.assertEqual(gui.controller.roll_amp, 50.0)
+            self.assertEqual(gui.controller.twist_amp, 50.0)
+            self.assertEqual(gui.controller.phase_shift, 180)
 
 if __name__ == '__main__':
     unittest.main()
