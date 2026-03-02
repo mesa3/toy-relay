@@ -1,0 +1,138 @@
+import re
+
+with open('dual_osr_control.py', 'r') as f:
+    content = f.read()
+
+init_replacement = """        self.speed = 1.0       # Hz
+        self.stroke = 50.0     # % (0-100)
+        self.offset = 50.0     # % (0-100)
+        self.phase_shift = 180 # Degrees (0 = sync, 180 = alternating)
+
+        # New Motion Parameters
+        self.pitch_amp = 50.0  # R2
+        self.roll_amp = 50.0   # R1
+        self.twist_amp = 50.0  # R0
+        self.base_squeeze = 50.0 # Base L0 offset
+        self.motion_mode = "walk"
+"""
+
+content = content.replace(
+    """        self.speed = 1.0       # Hz
+        self.stroke = 50.0     # % (0-100)
+        self.offset = 50.0     # % (0-100)
+        self.phase_shift = 180 # Degrees (0 = sync, 180 = alternating)""",
+    init_replacement
+)
+
+
+loop_old = """            # Calculate positions based on sine wave
+            # Phase is in radians: 2*pi*f*t
+            # Amplitude is stroke/2
+            # Offset is center position
+
+            # Normalize inputs
+            amp = (self.stroke / 100.0) * 5000 # Amplitude in T-Code units (0-5000)
+            center = (self.offset / 100.0) * 10000 # Center in T-Code units (0-10000)
+
+            # Clamp center so stroke doesn't exceed 0-9999
+            if center - amp < 0: center = amp
+            if center + amp > 9999: center = 9999 - amp
+
+            # Calculate Phase A
+            phase_a = 2 * math.pi * self.speed * t
+            pos_a = center + amp * math.sin(phase_a)
+
+            # Calculate Phase B (with shift)
+            phase_b = phase_a + math.radians(self.phase_shift)
+            pos_b = center + amp * math.sin(phase_b)
+
+            # Format T-Code (L0 is main stroke)
+            cmd_a = f"L0{int(pos_a):04d} I20" # I20 is interpolation interval ~20ms
+            cmd_b = f"L0{int(pos_b):04d} I20"
+
+            self._send_cmd(self.ser_a, cmd_a, self.ws_server_a)"""
+
+loop_new = """            phase_a = 2 * math.pi * self.speed * t
+            phase_b = phase_a + math.radians(self.phase_shift)
+
+            # Amplitudes (0-5000)
+            amp_l0 = (self.stroke / 100.0) * 5000
+            amp_r2 = (self.pitch_amp / 100.0) * 5000
+            amp_r1 = (self.roll_amp / 100.0) * 5000
+            amp_r0 = (self.twist_amp / 100.0) * 5000
+
+            # Centers (0-9999)
+            center_l0 = (self.base_squeeze / 100.0) * 9999
+            center_rx = 5000
+
+            # Clamp L0
+            if center_l0 - amp_l0 < 0: center_l0 = amp_l0
+            if center_l0 + amp_l0 > 9999: center_l0 = 9999 - amp_l0
+
+            cmd_a_parts = []
+            cmd_b_parts = []
+
+            if self.motion_mode == "walk":
+                pos_a = center_l0 + amp_l0 * math.sin(phase_a)
+                pos_b = center_l0 + amp_l0 * math.sin(phase_b)
+                cmd_a_parts.append(f"L0{int(pos_a):04d}")
+                cmd_b_parts.append(f"L0{int(pos_b):04d}")
+
+            elif self.motion_mode == "squeeze_rub":
+                # Sync L0 squeeze, alternating R2 pitch
+                pos_l0 = center_l0 + amp_l0 * math.sin(phase_a)
+                pos_a_r2 = center_rx + amp_r2 * math.sin(phase_a)
+                pos_b_r2 = center_rx + amp_r2 * math.sin(phase_b)
+
+                cmd_a_parts.extend([f"L0{int(pos_l0):04d}", f"R2{int(pos_a_r2):04d}"])
+                cmd_b_parts.extend([f"L0{int(pos_l0):04d}", f"R2{int(pos_b_r2):04d}"])
+
+            elif self.motion_mode == "ankle_massage":
+                # Hold L0 squeeze, alternating R1 roll
+                pos_a_r1 = center_rx + amp_r1 * math.sin(phase_a)
+                pos_b_r1 = center_rx + amp_r1 * math.sin(phase_b)
+
+                cmd_a_parts.extend([f"L0{int(center_l0):04d}", f"R1{int(pos_a_r1):04d}"])
+                cmd_b_parts.extend([f"L0{int(center_l0):04d}", f"R1{int(pos_b_r1):04d}"])
+
+            elif self.motion_mode == "stepping":
+                # Alternating L0 and Alternating R2 (pitching down while stepping)
+                pos_a_l0 = center_l0 + amp_l0 * math.sin(phase_a)
+                pos_b_l0 = center_l0 + amp_l0 * math.sin(phase_b)
+
+                # Pitch correlates with stroke (toe points down when pushing out)
+                pos_a_r2 = center_rx + amp_r2 * math.cos(phase_a)
+                pos_b_r2 = center_rx + amp_r2 * math.cos(phase_b)
+
+                cmd_a_parts.extend([f"L0{int(pos_a_l0):04d}", f"R2{int(pos_a_r2):04d}"])
+                cmd_b_parts.extend([f"L0{int(pos_b_l0):04d}", f"R2{int(pos_b_r2):04d}"])
+
+            elif self.motion_mode == "twisting":
+                # Alternating R0 twist and R1 roll, gentle L0 sync
+                pos_l0 = center_l0 + (amp_l0 * 0.5) * math.sin(phase_a)
+
+                pos_a_r0 = center_rx + amp_r0 * math.sin(phase_a)
+                pos_b_r0 = center_rx + amp_r0 * math.sin(phase_b)
+
+                pos_a_r1 = center_rx + amp_r1 * math.cos(phase_a)
+                pos_b_r1 = center_rx + amp_r1 * math.cos(phase_b)
+
+                cmd_a_parts.extend([f"L0{int(pos_l0):04d}", f"R0{int(pos_a_r0):04d}", f"R1{int(pos_a_r1):04d}"])
+                cmd_b_parts.extend([f"L0{int(pos_l0):04d}", f"R0{int(pos_b_r0):04d}", f"R1{int(pos_b_r1):04d}"])
+
+            else:
+                pos_a = center_l0 + amp_l0 * math.sin(phase_a)
+                pos_b = center_l0 + amp_l0 * math.sin(phase_b)
+                cmd_a_parts.append(f"L0{int(pos_a):04d}")
+                cmd_b_parts.append(f"L0{int(pos_b):04d}")
+
+            # Add timing interval
+            cmd_a = " ".join(cmd_a_parts) + " I20"
+            cmd_b = " ".join(cmd_b_parts) + " I20"
+
+            self._send_cmd(self.ser_a, cmd_a, self.ws_server_a)"""
+
+content = content.replace(loop_old, loop_new)
+
+with open('dual_osr_control.py', 'w') as f:
+    f.write(content)
