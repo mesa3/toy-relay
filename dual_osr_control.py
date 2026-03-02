@@ -172,7 +172,8 @@ class DualOSRController:
             # Centers (0-9999)
             center_l0 = (self.base_squeeze / 100.0) * 9999
             center_l2 = 5000
-            center_rx = 5000
+            center_r1 = (self.roll_angle_offset / 100.0) * 9999
+            center_rx = center_r1 # Backwards compatibility for unmodified modes
             center_r2 = (self.ankle_angle_offset / 100.0) * 9999
 
             # Clamp L0
