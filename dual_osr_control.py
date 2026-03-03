@@ -265,7 +265,7 @@ class DualOSRController:
                 pos_b_r2 = center_r2 - amp_r2 * math.cos(phase_b)
 
                 pos_a_r1 = center_a_r1 + amp_r1 * math.sin(phase_a)
-                pos_b_r1 = center_r1 - amp_r1 * math.sin(phase_b)
+                pos_b_r1 = center_b_r1 - amp_r1 * math.sin(phase_b)
 
                 cmd_a_parts.extend([f"L0{clamp(pos_a_l0):04d}", f"L2{clamp(pos_a_l2):04d}", f"R2{clamp(pos_a_r2):04d}", f"R1{clamp(pos_a_r1):04d}"])
                 cmd_b_parts.extend([f"L0{clamp(pos_b_l0):04d}", f"L2{clamp(pos_b_l2):04d}", f"R2{clamp(pos_b_r2):04d}", f"R1{clamp(pos_b_r1):04d}"])
@@ -289,7 +289,7 @@ class DualOSRController:
                 pos_b_r2 = center_r2 + amp_r2 * math.sin(phase_b)
 
                 pos_a_r1 = center_a_r1 + amp_r1 * math.cos(phase_a)
-                pos_b_r1 = center_r1 + amp_r1 * math.cos(phase_b)
+                pos_b_r1 = center_b_r1 + amp_r1 * math.cos(phase_b)
 
                 cmd_a_parts.extend([f"L0{clamp(center_l0):04d}", f"L2{clamp(center_l2):04d}", f"R2{clamp(pos_a_r2):04d}", f"R1{clamp(pos_a_r1):04d}"])
                 cmd_b_parts.extend([f"L0{clamp(center_l0):04d}", f"L2{clamp(center_l2):04d}", f"R2{clamp(pos_b_r2):04d}", f"R1{clamp(pos_b_r1):04d}"])
@@ -314,8 +314,8 @@ class DualOSRController:
 
             elif self.motion_mode == "edge_stroking":
                 # Feet roll heavily INWARDS (R1) to create a tight V-groove with the soles touching.
-                pos_a_r1 = center_r1 + amp_r1
-                pos_b_r1 = center_r1 - amp_r1
+                pos_a_r1 = center_a_r1 + amp_r1
+                pos_b_r1 = center_b_r1 - amp_r1
 
                 # L0 synchronously strokes up and down the groove
                 z_motion = amp_l0 * math.sin(phase_a)
