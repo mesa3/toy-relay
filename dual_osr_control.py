@@ -83,7 +83,6 @@ class DualOSRController:
         self.roll_amp = 50.0   # R1
         self.twist_amp = 50.0  # R0
         self.base_squeeze = 50.0 # Base L0 offset
-        self.l2_squeeze = 50.0 # Base L2 gap offset
         self.ankle_angle_offset = 50.0 # Base R2 offset
         self.roll_angle_offset = 50.0 # Base R1 offset
         self.motion_mode = "v_stroke"
@@ -172,10 +171,11 @@ class DualOSRController:
 
             # Centers (0-9999)
             center_l0 = (self.base_squeeze / 100.0) * 9999
-            center_l2 = (self.l2_squeeze / 100.0) * 9999
-            center_r1 = (self.roll_angle_offset / 100.0) * 9999
+            center_l2 = 5000
+            center_a_r1 = (self.roll_angle_offset / 100.0) * 9999
+            center_b_r1 = 9999 - center_a_r1 # Mirror R1 for Device B so they tilt in the same physical direction
             center_r0 = 5000 # Neutral twist
-            center_rx = center_r1 # Backwards compatibility for unmodified modes
+            center_rx = center_a_r1 # Backwards compatibility for unmodified modes
             center_r2 = (self.ankle_angle_offset / 100.0) * 9999
 
             # Clamp L0
@@ -200,8 +200,8 @@ class DualOSRController:
                 pos_a_l2 = center_l2 - (z_motion * l2_mult)
                 pos_b_l2 = center_l2 + (z_motion * l2_mult)
 
-                cmd_a_parts.extend([f"L0{clamp(pos_l0):04d}", f"L2{clamp(pos_a_l2):04d}", f"R2{clamp(center_r2):04d}", f"R1{clamp(center_r1):04d}"])
-                cmd_b_parts.extend([f"L0{clamp(pos_l0):04d}", f"L2{clamp(pos_b_l2):04d}", f"R2{clamp(center_r2):04d}", f"R1{clamp(center_r1):04d}"])
+                cmd_a_parts.extend([f"L0{clamp(pos_l0):04d}", f"L2{clamp(pos_a_l2):04d}", f"R2{clamp(center_r2):04d}", f"R1{clamp(center_a_r1):04d}"])
+                cmd_b_parts.extend([f"L0{clamp(pos_l0):04d}", f"L2{clamp(pos_b_l2):04d}", f"R2{clamp(center_r2):04d}", f"R1{clamp(center_b_r1):04d}"])
 
 
             elif self.motion_mode == "wave_rub_up_down":
@@ -214,8 +214,8 @@ class DualOSRController:
                 pos_b_l2 = center_l2 + (z_motion * l2_mult)
 
                 # R1 rolls dynamically out of phase with the stroke to create a massaging wave
-                pos_a_r1 = center_r1 + amp_r1 * math.cos(phase_a)
-                pos_b_r1 = center_r1 - amp_r1 * math.cos(phase_a) # Mirror roll
+                pos_a_r1 = center_a_r1 + amp_r1 * math.cos(phase_a)
+                pos_b_r1 = center_b_r1 - amp_r1 * math.cos(phase_a) # Mirror roll
 
                 cmd_a_parts.extend([f"L0{clamp(pos_l0):04d}", f"L2{clamp(pos_a_l2):04d}", f"R2{clamp(center_r2):04d}", f"R1{clamp(pos_a_r1):04d}"])
                 cmd_b_parts.extend([f"L0{clamp(pos_l0):04d}", f"L2{clamp(pos_b_l2):04d}", f"R2{clamp(center_r2):04d}", f"R1{clamp(pos_b_r1):04d}"])
@@ -233,8 +233,8 @@ class DualOSRController:
                 pos_a_r2 = center_r2 + amp_r2 * math.cos(phase_a)
                 pos_b_r2 = center_r2 - amp_r2 * math.cos(phase_a) # Mirror pitch
 
-                cmd_a_parts.extend([f"L0{clamp(pos_l0):04d}", f"L2{clamp(pos_a_l2):04d}", f"R2{clamp(pos_a_r2):04d}", f"R1{clamp(center_r1):04d}"])
-                cmd_b_parts.extend([f"L0{clamp(pos_l0):04d}", f"L2{clamp(pos_b_l2):04d}", f"R2{clamp(pos_b_r2):04d}", f"R1{clamp(center_r1):04d}"])
+                cmd_a_parts.extend([f"L0{clamp(pos_l0):04d}", f"L2{clamp(pos_a_l2):04d}", f"R2{clamp(pos_a_r2):04d}", f"R1{clamp(center_a_r1):04d}"])
+                cmd_b_parts.extend([f"L0{clamp(pos_l0):04d}", f"L2{clamp(pos_b_l2):04d}", f"R2{clamp(pos_b_r2):04d}", f"R1{clamp(center_b_r1):04d}"])
 
             elif self.motion_mode == "static_rub_front_back":
                 # Static front-back rubbing (原地前后波浪形揉搓)
@@ -247,8 +247,8 @@ class DualOSRController:
                 pos_a_r2 = center_r2 + amp_r2 * math.cos(phase_a)
                 pos_b_r2 = center_r2 - amp_r2 * math.cos(phase_a) # Mirror pitch
 
-                cmd_a_parts.extend([f"L0{clamp(pos_l0):04d}", f"L2{clamp(pos_a_l2):04d}", f"R2{clamp(pos_a_r2):04d}", f"R1{clamp(center_r1):04d}"])
-                cmd_b_parts.extend([f"L0{clamp(pos_l0):04d}", f"L2{clamp(pos_b_l2):04d}", f"R2{clamp(pos_b_r2):04d}", f"R1{clamp(center_r1):04d}"])
+                cmd_a_parts.extend([f"L0{clamp(pos_l0):04d}", f"L2{clamp(pos_a_l2):04d}", f"R2{clamp(pos_a_r2):04d}", f"R1{clamp(center_a_r1):04d}"])
+                cmd_b_parts.extend([f"L0{clamp(pos_l0):04d}", f"L2{clamp(pos_b_l2):04d}", f"R2{clamp(pos_b_r2):04d}", f"R1{clamp(center_b_r1):04d}"])
             elif self.motion_mode == "alternating_step":
                 # Alternating strokes with parallel L2 compensation
                 z_motion_a = amp_l0 * math.sin(phase_a)
@@ -264,7 +264,7 @@ class DualOSRController:
                 pos_a_r2 = center_r2 + amp_r2 * math.cos(phase_a)
                 pos_b_r2 = center_r2 - amp_r2 * math.cos(phase_b)
 
-                pos_a_r1 = center_r1 + amp_r1 * math.sin(phase_a)
+                pos_a_r1 = center_a_r1 + amp_r1 * math.sin(phase_a)
                 pos_b_r1 = center_r1 - amp_r1 * math.sin(phase_b)
 
                 cmd_a_parts.extend([f"L0{clamp(pos_a_l0):04d}", f"L2{clamp(pos_a_l2):04d}", f"R2{clamp(pos_a_r2):04d}", f"R1{clamp(pos_a_r1):04d}"])
@@ -274,8 +274,8 @@ class DualOSRController:
                 # Hold a constant close squeeze (L0).
                 # Roll soles inwards (R1). Assuming +R1 is roll inwards for left foot, then -R1 is inwards for right foot.
                 # (Or vice versa, they should be out of phase to roll symmetrically relative to the center).
-                pos_a_r1 = center_r1 + amp_r1 * math.sin(phase_a)
-                pos_b_r1 = center_r1 - amp_r1 * math.sin(phase_a) # Mirror roll inwards
+                pos_a_r1 = center_a_r1 + amp_r1 * math.sin(phase_a)
+                pos_b_r1 = center_b_r1 - amp_r1 * math.sin(phase_a) # Mirror roll inwards
 
                 # Alternate twisting to rub the sides (R0)
                 pos_a_r0 = center_r0 + amp_r0 * math.cos(phase_a)
@@ -288,7 +288,7 @@ class DualOSRController:
                 pos_a_r2 = center_r2 + amp_r2 * math.sin(phase_a)
                 pos_b_r2 = center_r2 + amp_r2 * math.sin(phase_b)
 
-                pos_a_r1 = center_r1 + amp_r1 * math.cos(phase_a)
+                pos_a_r1 = center_a_r1 + amp_r1 * math.cos(phase_a)
                 pos_b_r1 = center_r1 + amp_r1 * math.cos(phase_b)
 
                 cmd_a_parts.extend([f"L0{clamp(center_l0):04d}", f"L2{clamp(center_l2):04d}", f"R2{clamp(pos_a_r2):04d}", f"R1{clamp(pos_a_r1):04d}"])
@@ -348,8 +348,8 @@ class DualOSRController:
                 cmd_b_parts.extend([f"L0{clamp(pos_l0):04d}", f"R2{clamp(pos_r2):04d}", f"R0{clamp(pos_b_r0):04d}"])
 
             elif self.motion_mode == "circling_tease":
-                pos_a_r1 = center_r1 + amp_r1 * math.sin(phase_a)
-                pos_b_r1 = center_r1 - amp_r1 * math.sin(phase_a)
+                pos_a_r1 = center_a_r1 + amp_r1 * math.sin(phase_a)
+                pos_b_r1 = center_b_r1 - amp_r1 * math.sin(phase_a)
 
                 pos_a_r2 = center_r2 + amp_r2 * math.cos(phase_a)
                 pos_b_r2 = center_r2 + amp_r2 * math.cos(phase_a)
@@ -530,11 +530,6 @@ class DualOSRGui:
         self.base_squeeze_scale = ttk.Scale(ctrl_frame, from_=0.0, to=100.0, variable=self.base_squeeze_var, command=self.update_params)
         self.base_squeeze_scale.pack(fill="x", padx=5, pady=2)
 
-        ttk.Label(ctrl_frame, text="L2 Lateral Gap / Squeeze (%):").pack(anchor="w", padx=5)
-        self.l2_squeeze_var = tk.DoubleVar(value=50.0)
-        self.l2_squeeze_scale = ttk.Scale(ctrl_frame, from_=0.0, to=100.0, variable=self.l2_squeeze_var, command=self.update_params)
-        self.l2_squeeze_scale.pack(fill="x", padx=5, pady=2)
-
         # Advanced Axes
         adv_frame = ttk.LabelFrame(ctrl_frame, text="Advanced Axes (Depends on Mode)")
         adv_frame.pack(fill="x", padx=5, pady=5)
@@ -622,7 +617,6 @@ class DualOSRGui:
         self.controller.speed = self.speed_var.get()
         self.controller.stroke = self.stroke_var.get()
         self.controller.base_squeeze = self.base_squeeze_var.get()
-        self.controller.l2_squeeze = self.l2_squeeze_var.get()
         self.controller.ankle_angle_offset = self.ankle_offset_var.get()
         self.controller.roll_angle_offset = self.roll_offset_var.get()
         self.controller.pitch_amp = self.pitch_amp_var.get()
