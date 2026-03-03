@@ -359,6 +359,37 @@ class DualOSRController:
                 cmd_a_parts.extend([f"L0{clamp(center_l0):04d}", f"L2{clamp(center_l2):04d}", f"R1{clamp(pos_a_r1):04d}", f"R2{clamp(pos_a_r2):04d}"])
                 cmd_b_parts.extend([f"L0{clamp(center_l0):04d}", f"L2{clamp(center_l2):04d}", f"R1{clamp(pos_b_r1):04d}", f"R2{clamp(pos_b_r2):04d}"])
 
+
+            elif self.motion_mode == "asymmetric_sprint":
+                # Asymmetric Sprint (双机非对称冲刺)
+                # One foot strokes rapidly while the other holds still, then they switch.
+
+                # Slow phase controls the turn (e.g., switch every 2.5 full cycles)
+                turn_phase = phase_a * 0.2
+                # Fast phase for the sprint
+                sprint_phase = phase_a * 2.5
+
+                if math.sin(turn_phase) > 0:
+                    # Device A's turn to sprint
+                    z_motion_a = amp_l0 * math.sin(sprint_phase)
+                    z_motion_b = 0 # B holds still
+                else:
+                    # Device B's turn to sprint
+                    z_motion_a = 0 # A holds still
+                    z_motion_b = amp_l0 * math.sin(sprint_phase)
+
+                pos_a_l0 = center_l0 + z_motion_a
+                pos_a_l2 = center_l2 - (z_motion_a * l2_mult)
+
+                pos_b_l0 = center_l0 + z_motion_b
+                pos_b_l2 = center_l2 + (z_motion_b * l2_mult)
+
+                # Add a little teasing pitch wag to the active foot
+                pos_a_r2 = center_r2 + (amp_r2 * 0.5 * math.cos(sprint_phase) if z_motion_a != 0 else 0)
+                pos_b_r2 = center_r2 - (amp_r2 * 0.5 * math.cos(sprint_phase) if z_motion_b != 0 else 0)
+
+                cmd_a_parts.extend([f"L0{clamp(pos_a_l0):04d}", f"L2{clamp(pos_a_l2):04d}", f"R2{clamp(pos_a_r2):04d}", f"R1{clamp(center_a_r1):04d}"])
+                cmd_b_parts.extend([f"L0{clamp(pos_b_l0):04d}", f"L2{clamp(pos_b_l2):04d}", f"R2{clamp(pos_b_r2):04d}", f"R1{clamp(center_b_r1):04d}"])
             elif self.motion_mode == "single_foot_tease_left":
                 # Left foot teases with rapid flickering pitch, Right foot stays still at base squeeze
                 fast_phase_a = phase_a * 2.0
@@ -513,7 +544,7 @@ class DualOSRGui:
         modes = [
             "v_stroke", "alternating_step", "wrapping_twist", "sole_rub",
             "toe_tease", "edge_stroking", "heel_press", "circling_tease",
-            "wave_rub_up_down", "wave_rub_front_back", "static_rub_front_back",
+            "wave_rub_up_down", "wave_rub_front_back", "static_rub_front_back", "asymmetric_sprint",
             "single_foot_tease_left", "single_foot_tease_right",
             "single_foot_stroke_left", "single_foot_stroke_right"
         ]
@@ -631,7 +662,7 @@ class DualOSRGui:
 
         # In some modes, we want synchronous base loops
         if mode in ["v_stroke", "wrapping_twist", "sole_rub", "edge_stroking", "heel_press", "circling_tease", "toe_tease",
-                    "wave_rub_up_down", "wave_rub_front_back", "static_rub_front_back", "static_rub_front_back",
+                    "wave_rub_up_down", "wave_rub_front_back", "static_rub_front_back", "asymmetric_sprint", "static_rub_front_back",
                     "single_foot_tease_left", "single_foot_tease_right", "single_foot_stroke_left", "single_foot_stroke_right"]:
             self.controller.phase_shift = 0   # Base phase sync (modes handle mirroring internally if needed)
         else:
