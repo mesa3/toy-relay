@@ -174,6 +174,7 @@ class DualOSRController:
             center_l0 = (self.base_squeeze / 100.0) * 9999
             center_l2 = (self.l2_squeeze / 100.0) * 9999
             center_r1 = (self.roll_angle_offset / 100.0) * 9999
+            center_r0 = 5000 # Neutral twist
             center_rx = center_r1 # Backwards compatibility for unmodified modes
             center_r2 = (self.ankle_angle_offset / 100.0) * 9999
 
@@ -213,8 +214,8 @@ class DualOSRController:
                 pos_b_l2 = center_l2 + (z_motion * l2_mult)
 
                 # R1 rolls dynamically out of phase with the stroke to create a massaging wave
-                pos_a_r1 = center_rx + amp_r1 * math.cos(phase_a)
-                pos_b_r1 = center_rx - amp_r1 * math.cos(phase_a) # Mirror roll
+                pos_a_r1 = center_r1 + amp_r1 * math.cos(phase_a)
+                pos_b_r1 = center_r1 - amp_r1 * math.cos(phase_a) # Mirror roll
 
                 cmd_a_parts.extend([f"L0{clamp(pos_l0):04d}", f"L2{clamp(pos_a_l2):04d}", f"R2{clamp(center_r2):04d}", f"R1{clamp(pos_a_r1):04d}"])
                 cmd_b_parts.extend([f"L0{clamp(pos_l0):04d}", f"L2{clamp(pos_b_l2):04d}", f"R2{clamp(center_r2):04d}", f"R1{clamp(pos_b_r1):04d}"])
@@ -263,8 +264,8 @@ class DualOSRController:
                 pos_a_r2 = center_r2 + amp_r2 * math.cos(phase_a)
                 pos_b_r2 = center_r2 - amp_r2 * math.cos(phase_b)
 
-                pos_a_r1 = center_rx + amp_r1 * math.sin(phase_a)
-                pos_b_r1 = center_rx - amp_r1 * math.sin(phase_b)
+                pos_a_r1 = center_r1 + amp_r1 * math.sin(phase_a)
+                pos_b_r1 = center_r1 - amp_r1 * math.sin(phase_b)
 
                 cmd_a_parts.extend([f"L0{clamp(pos_a_l0):04d}", f"L2{clamp(pos_a_l2):04d}", f"R2{clamp(pos_a_r2):04d}", f"R1{clamp(pos_a_r1):04d}"])
                 cmd_b_parts.extend([f"L0{clamp(pos_b_l0):04d}", f"L2{clamp(pos_b_l2):04d}", f"R2{clamp(pos_b_r2):04d}", f"R1{clamp(pos_b_r1):04d}"])
@@ -273,12 +274,12 @@ class DualOSRController:
                 # Hold a constant close squeeze (L0).
                 # Roll soles inwards (R1). Assuming +R1 is roll inwards for left foot, then -R1 is inwards for right foot.
                 # (Or vice versa, they should be out of phase to roll symmetrically relative to the center).
-                pos_a_r1 = center_rx + amp_r1 * math.sin(phase_a)
-                pos_b_r1 = center_rx - amp_r1 * math.sin(phase_a) # Mirror roll inwards
+                pos_a_r1 = center_r1 + amp_r1 * math.sin(phase_a)
+                pos_b_r1 = center_r1 - amp_r1 * math.sin(phase_a) # Mirror roll inwards
 
                 # Alternate twisting to rub the sides (R0)
-                pos_a_r0 = center_rx + amp_r0 * math.cos(phase_a)
-                pos_b_r0 = center_rx + amp_r0 * math.cos(phase_b) # Alternating twist
+                pos_a_r0 = center_r0 + amp_r0 * math.cos(phase_a)
+                pos_b_r0 = center_r0 + amp_r0 * math.cos(phase_b) # Alternating twist
 
                 cmd_a_parts.extend([f"L0{clamp(center_l0):04d}", f"R1{clamp(pos_a_r1):04d}", f"R0{clamp(pos_a_r0):04d}"])
                 cmd_b_parts.extend([f"L0{clamp(center_l0):04d}", f"R1{clamp(pos_b_r1):04d}", f"R0{clamp(pos_b_r0):04d}"])
@@ -287,8 +288,8 @@ class DualOSRController:
                 pos_a_r2 = center_r2 + amp_r2 * math.sin(phase_a)
                 pos_b_r2 = center_r2 + amp_r2 * math.sin(phase_b)
 
-                pos_a_r1 = center_rx + amp_r1 * math.cos(phase_a)
-                pos_b_r1 = center_rx + amp_r1 * math.cos(phase_b)
+                pos_a_r1 = center_r1 + amp_r1 * math.cos(phase_a)
+                pos_b_r1 = center_r1 + amp_r1 * math.cos(phase_b)
 
                 cmd_a_parts.extend([f"L0{clamp(center_l0):04d}", f"L2{clamp(center_l2):04d}", f"R2{clamp(pos_a_r2):04d}", f"R1{clamp(pos_a_r1):04d}"])
                 cmd_b_parts.extend([f"L0{clamp(center_l0):04d}", f"L2{clamp(center_l2):04d}", f"R2{clamp(pos_b_r2):04d}", f"R1{clamp(pos_b_r1):04d}"])
@@ -313,8 +314,8 @@ class DualOSRController:
 
             elif self.motion_mode == "edge_stroking":
                 # Feet roll heavily INWARDS (R1) to create a tight V-groove with the soles touching.
-                pos_a_r1 = center_rx + amp_r1
-                pos_b_r1 = center_rx - amp_r1
+                pos_a_r1 = center_r1 + amp_r1
+                pos_b_r1 = center_r1 - amp_r1
 
                 # L0 synchronously strokes up and down the groove
                 z_motion = amp_l0 * math.sin(phase_a)
@@ -340,15 +341,15 @@ class DualOSRController:
                 pos_l0 = center_l0 + amp_l0 * math.sin(slow_phase)
 
                 # Twisting (R0) slightly back and forth to grind the heels
-                pos_a_r0 = center_rx + amp_r0 * math.cos(slow_phase)
-                pos_b_r0 = center_rx - amp_r0 * math.cos(slow_phase)
+                pos_a_r0 = center_r0 + amp_r0 * math.cos(slow_phase)
+                pos_b_r0 = center_r0 - amp_r0 * math.cos(slow_phase)
 
                 cmd_a_parts.extend([f"L0{clamp(pos_l0):04d}", f"R2{clamp(pos_r2):04d}", f"R0{clamp(pos_a_r0):04d}"])
                 cmd_b_parts.extend([f"L0{clamp(pos_l0):04d}", f"R2{clamp(pos_r2):04d}", f"R0{clamp(pos_b_r0):04d}"])
 
             elif self.motion_mode == "circling_tease":
-                pos_a_r1 = center_rx + amp_r1 * math.sin(phase_a)
-                pos_b_r1 = center_rx - amp_r1 * math.sin(phase_a)
+                pos_a_r1 = center_r1 + amp_r1 * math.sin(phase_a)
+                pos_b_r1 = center_r1 - amp_r1 * math.sin(phase_a)
 
                 pos_a_r2 = center_r2 + amp_r2 * math.cos(phase_a)
                 pos_b_r2 = center_r2 + amp_r2 * math.cos(phase_a)
