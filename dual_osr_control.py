@@ -215,7 +215,7 @@ class DualOSRController:
 
                 # R1 rolls dynamically out of phase with the stroke to create a massaging wave
                 pos_a_r1 = center_a_r1 + amp_r1 * math.cos(phase_a)
-                pos_b_r1 = center_b_r1 - amp_r1 * math.cos(phase_a) # Mirror roll
+                pos_b_r1 = center_b_r1 + amp_r1 * math.cos(phase_a) # Alternating phase (+ instead of -)
 
                 cmd_a_parts.extend([f"L0{clamp(pos_l0):04d}", f"L2{clamp(pos_a_l2):04d}", f"R2{clamp(center_r2):04d}", f"R1{clamp(pos_a_r1):04d}"])
                 cmd_b_parts.extend([f"L0{clamp(pos_l0):04d}", f"L2{clamp(pos_b_l2):04d}", f"R2{clamp(center_r2):04d}", f"R1{clamp(pos_b_r1):04d}"])
@@ -229,9 +229,10 @@ class DualOSRController:
                 pos_a_l2 = center_l2 - (z_motion * l2_mult)
                 pos_b_l2 = center_l2 + (z_motion * l2_mult)
 
-                # R2 pitches dynamically to wipe front/back
-                pos_a_r2 = center_r2 + amp_r2 * math.cos(phase_a)
-                pos_b_r2 = center_r2 - amp_r2 * math.cos(phase_a) # Mirror pitch
+                # R2 pitches dynamically to wipe front/back at a higher frequency (2x)
+                fast_phase = phase_a * 2.0
+                pos_a_r2 = center_r2 + amp_r2 * math.cos(fast_phase)
+                pos_b_r2 = center_r2 - amp_r2 * math.cos(fast_phase) # Alternating rapid pitch
 
                 cmd_a_parts.extend([f"L0{clamp(pos_l0):04d}", f"L2{clamp(pos_a_l2):04d}", f"R2{clamp(pos_a_r2):04d}", f"R1{clamp(center_a_r1):04d}"])
                 cmd_b_parts.extend([f"L0{clamp(pos_l0):04d}", f"L2{clamp(pos_b_l2):04d}", f"R2{clamp(pos_b_r2):04d}", f"R1{clamp(center_b_r1):04d}"])
@@ -243,9 +244,10 @@ class DualOSRController:
                 pos_a_l2 = center_l2
                 pos_b_l2 = center_l2
 
-                # R2 pitches dynamically to wipe front/back
-                pos_a_r2 = center_r2 + amp_r2 * math.cos(phase_a)
-                pos_b_r2 = center_r2 - amp_r2 * math.cos(phase_a) # Mirror pitch
+                # R2 pitches dynamically to wipe front/back at a higher frequency (2x)
+                fast_phase = phase_a * 2.0
+                pos_a_r2 = center_r2 + amp_r2 * math.cos(fast_phase)
+                pos_b_r2 = center_r2 - amp_r2 * math.cos(fast_phase) # Alternating rapid pitch
 
                 cmd_a_parts.extend([f"L0{clamp(pos_l0):04d}", f"L2{clamp(pos_a_l2):04d}", f"R2{clamp(pos_a_r2):04d}", f"R1{clamp(center_a_r1):04d}"])
                 cmd_b_parts.extend([f"L0{clamp(pos_l0):04d}", f"L2{clamp(pos_b_l2):04d}", f"R2{clamp(pos_b_r2):04d}", f"R1{clamp(center_b_r1):04d}"])
