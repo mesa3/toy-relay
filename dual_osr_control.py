@@ -83,6 +83,7 @@ class DualOSRController:
         self.roll_amp = 50.0   # R1
         self.twist_amp = 50.0  # R0
         self.base_squeeze = 50.0 # Base L0 offset
+        self.l2_squeeze = 50.0 # Base L2 gap offset
         self.ankle_angle_offset = 50.0 # Base R2 offset
         self.roll_angle_offset = 50.0 # Base R1 offset
         self.motion_mode = "v_stroke"
@@ -171,7 +172,7 @@ class DualOSRController:
 
             # Centers (0-9999)
             center_l0 = (self.base_squeeze / 100.0) * 9999
-            center_l2 = 5000
+            center_l2 = (self.l2_squeeze / 100.0) * 9999
             center_r1 = (self.roll_angle_offset / 100.0) * 9999
             center_rx = center_r1 # Backwards compatibility for unmodified modes
             center_r2 = (self.ankle_angle_offset / 100.0) * 9999
@@ -528,6 +529,11 @@ class DualOSRGui:
         self.base_squeeze_scale = ttk.Scale(ctrl_frame, from_=0.0, to=100.0, variable=self.base_squeeze_var, command=self.update_params)
         self.base_squeeze_scale.pack(fill="x", padx=5, pady=2)
 
+        ttk.Label(ctrl_frame, text="L2 Lateral Gap / Squeeze (%):").pack(anchor="w", padx=5)
+        self.l2_squeeze_var = tk.DoubleVar(value=50.0)
+        self.l2_squeeze_scale = ttk.Scale(ctrl_frame, from_=0.0, to=100.0, variable=self.l2_squeeze_var, command=self.update_params)
+        self.l2_squeeze_scale.pack(fill="x", padx=5, pady=2)
+
         # Advanced Axes
         adv_frame = ttk.LabelFrame(ctrl_frame, text="Advanced Axes (Depends on Mode)")
         adv_frame.pack(fill="x", padx=5, pady=5)
@@ -615,6 +621,7 @@ class DualOSRGui:
         self.controller.speed = self.speed_var.get()
         self.controller.stroke = self.stroke_var.get()
         self.controller.base_squeeze = self.base_squeeze_var.get()
+        self.controller.l2_squeeze = self.l2_squeeze_var.get()
         self.controller.ankle_angle_offset = self.ankle_offset_var.get()
         self.controller.roll_angle_offset = self.roll_offset_var.get()
         self.controller.pitch_amp = self.pitch_amp_var.get()
