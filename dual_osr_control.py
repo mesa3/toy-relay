@@ -396,35 +396,65 @@ class DualOSRController:
                 cmd_b_parts.extend([f"L0{clamp(pos_b_l0):04d}", f"L2{clamp(pos_b_l2):04d}", f"R2{clamp(pos_b_r2):04d}", f"R1{clamp(center_b_r1):04d}"])
 
             elif self.motion_mode == "foot_slap":
-                # Foot Slap (脚耳光)
-                # One foot holds back, suddenly strikes (sharp peak), and immediately retreats. Alternating.
+                # Redesigned Foot Slap (侧面脚耳光)
+                # Goal: Side-slapping motion. Feet pull back laterally (L2) away from the penis,
+                # then suddenly snap inward to strike the side, and bounce back.
 
-                # Slow phase controls the rhythm of the slaps (e.g., 1 slap every full cycle)
-                turn_phase = phase_a * 0.5
+                # Keep L0 static at the base squeeze position (or slightly pulled back to avoid tip)
+                pos_l0 = center_l0
 
-                # We use a mathematical trick to create a sharp "slap" profile instead of a smooth sine wave.
-                # max(0, sin(x))^8 creates a flat zero baseline with sudden, sharp peaks.
-                raw_slap_a = max(0, math.sin(phase_a * 2.0)) ** 8
-                raw_slap_b = max(0, math.sin(phase_a * 2.0 + math.pi)) ** 8
+                # We need a custom slap profile based on the current phase progress (0 to 1)
+                # Let's slow down the overall cycle so the "wait" is longer.
+                slow_phase = phase_a * 0.5
+                prog = (slow_phase % (2 * math.pi)) / (2 * math.pi)
 
-                # Only let A slap if turn_phase is positive, B if negative (interleaving them with pauses)
-                # Actually, let's just make them alternate rhythmically without long pauses, like being slapped left and right.
-                z_motion_a = amp_l0 * raw_slap_a
-                z_motion_b = amp_l0 * raw_slap_b
+                # We want Device A to slap at prog=0.25, and Device B to slap at prog=0.75
+                # A slap profile goes from 1.0 (fully open/pulled back) down to -1.0 (fully closed/striking)
+                def get_slap_val(t, strike_time):
+                    # Distance from strike time
+                    dist = abs(t - strike_time)
+                    # If within 5% of cycle time, do the slap (very fast)
+                    if dist < 0.05:
+                        # Map dist 0->0.05 to -1.0->1.0
+                        return -1.0 + (dist / 0.05) * 2.0
+                    else:
+                        # Recovering or waiting (fully open)
+                        return 1.0
 
-                # Slap is just a fast L0 push, but we want it to be parallel too
-                pos_a_l0 = center_l0 + z_motion_a
-                pos_a_l2 = center_l2 - (z_motion_a * l2_mult)
+                val_a = get_slap_val(prog, 0.25)
+                val_b = get_slap_val(prog, 0.75)
 
-                pos_b_l0 = center_l0 + z_motion_b
-                pos_b_l2 = center_l2 + (z_motion_b * l2_mult)
+                # Map to L2.
+                # Remember l2_mult handles mounting direction.
+                # When val_a is 1.0 (open), we want L2 to move AWAY from center.
+                # When val_a is -1.0 (slap), we want L2 to move TOWARDS center.
+                # Previously: center_l2 - (z_motion * l2_mult). So if z_motion is positive, it moves inward.
+                # We will map our val directly to a lateral motion offset.
+                # amp_l0 represents the max stroke. We use it as the slap distance amplitude.
+                lat_amp = amp_l0 * 0.8 # Slap distance
 
-                # Accompanied by a sharp pitch to mimic the "snap" of an ankle during a slap
-                pos_a_r2 = center_r2 + (amp_r2 * raw_slap_a)
-                pos_b_r2 = center_r2 - (amp_r2 * raw_slap_b)
+                # val is 1.0 (open) -> we want to subtract lat_amp (move outward)
+                # val is -1.0 (slap) -> we want to add lat_amp (move inward to strike)
+                # So offset = -val * lat_amp
 
-                cmd_a_parts.extend([f"L0{clamp(pos_a_l0):04d}", f"L2{clamp(pos_a_l2):04d}", f"R2{clamp(pos_a_r2):04d}", f"R1{clamp(center_a_r1):04d}"])
-                cmd_b_parts.extend([f"L0{clamp(pos_b_l0):04d}", f"L2{clamp(pos_b_l2):04d}", f"R2{clamp(pos_b_r2):04d}", f"R1{clamp(center_b_r1):04d}"])
+                pos_a_l2 = center_l2 - (val_a * lat_amp * l2_mult)
+                pos_b_l2 = center_l2 + (val_b * lat_amp * l2_mult)
+
+                # Accompanied by a quick inward Roll (R1) flick to emphasize the "slapping with the sole"
+                # R1 offset is 0 when open (val=1), and high amplitude when slapping (val=-1)
+                r1_flick_a = ((1.0 - val_a) / 2.0) * amp_r1 # 0 to amp_r1
+                r1_flick_b = ((1.0 - val_b) / 2.0) * amp_r1
+
+                # pos_a_r1 = center_a_r1 + r1_flick_a (assuming + is inward roll)
+                pos_a_r1 = center_a_r1 + r1_flick_a
+                pos_b_r1 = center_b_r1 - r1_flick_b # mirrored
+
+                # R2 stays neutral
+                pos_a_r2 = center_r2
+                pos_b_r2 = center_r2
+
+                cmd_a_parts.extend([f"L0{clamp(pos_l0):04d}", f"L2{clamp(pos_a_l2):04d}", f"R2{clamp(pos_a_r2):04d}", f"R1{clamp(pos_a_r1):04d}"])
+                cmd_b_parts.extend([f"L0{clamp(pos_l0):04d}", f"L2{clamp(pos_b_l2):04d}", f"R2{clamp(pos_b_r2):04d}", f"R1{clamp(pos_b_r1):04d}"])
 
             elif self.motion_mode == "glans_torture":
                 # Glans Torture (龟头折磨)
@@ -456,6 +486,53 @@ class DualOSRController:
 
                 pos_a_r2 = center_r2 + (amp_r2 * 0.5) * math.cos(fast_phase)
                 pos_b_r2 = center_r2 - (amp_r2 * 0.5) * math.cos(fast_phase)
+
+                cmd_a_parts.extend([f"L0{clamp(pos_l0):04d}", f"L2{clamp(pos_a_l2):04d}", f"R2{clamp(pos_a_r2):04d}", f"R1{clamp(pos_a_r1):04d}"])
+                cmd_b_parts.extend([f"L0{clamp(pos_l0):04d}", f"L2{clamp(pos_b_l2):04d}", f"R2{clamp(pos_b_r2):04d}", f"R1{clamp(pos_b_r1):04d}"])
+
+            elif self.motion_mode == "edging_sole_show":
+                # Edging Sole Show (寸止展示脚底)
+                # Fast strokes followed by a sudden stop, pulling back, spreading wide, and pitching up to show soles.
+
+                # Director phase: slow cycle to toggle between stroking and showing
+                # Let's say 1 full director cycle = 5 fast stroke cycles.
+                # Director > 0 (stroking phase), Director < 0 (show phase)
+                director = math.sin(phase_a * 0.2)
+                fast_phase = phase_a * 2.0
+
+                if director > 0:
+                    # Stroking Phase (Fast parallel v_stroke)
+                    # We add a smooth transition based on the director sine to avoid harsh snaps,
+                    # but for now a direct cut is fine since they are T-code commands.
+                    z_motion = amp_l0 * math.sin(fast_phase)
+
+                    pos_l0 = center_l0 + z_motion
+                    pos_a_l2 = center_l2 - (z_motion * l2_mult)
+                    pos_b_l2 = center_l2 + (z_motion * l2_mult)
+
+                    # Normal pitch and roll
+                    pos_a_r2 = center_r2
+                    pos_b_r2 = center_r2
+                    pos_a_r1 = center_a_r1
+                    pos_b_r1 = center_b_r1
+
+                else:
+                    # Show Phase (Pulled back, spread open, soles pitched up)
+                    # Pull L0 all the way back
+                    pos_l0 = center_l0 - amp_l0
+
+                    # Spread L2 wide (outward)
+                    # L2 moving outward: A moves left (subtract), B moves right (add)
+                    pos_a_l2 = center_l2 - (amp_l0 * l2_mult)
+                    pos_b_l2 = center_l2 + (amp_l0 * l2_mult)
+
+                    # Pitch (R2) heavily up to expose sole
+                    pos_a_r2 = center_r2 + amp_r2
+                    pos_b_r2 = center_r2 + amp_r2
+
+                    # Roll (R1) optional, let's keep it flat or slight inward
+                    pos_a_r1 = center_a_r1
+                    pos_b_r1 = center_b_r1
 
                 cmd_a_parts.extend([f"L0{clamp(pos_l0):04d}", f"L2{clamp(pos_a_l2):04d}", f"R2{clamp(pos_a_r2):04d}", f"R1{clamp(pos_a_r1):04d}"])
                 cmd_b_parts.extend([f"L0{clamp(pos_l0):04d}", f"L2{clamp(pos_b_l2):04d}", f"R2{clamp(pos_b_r2):04d}", f"R1{clamp(pos_b_r1):04d}"])
@@ -614,7 +691,7 @@ class DualOSRGui:
             "v_stroke", "alternating_step", "wrapping_twist", "sole_rub",
             "toe_tease", "edge_stroking", "heel_press", "circling_tease",
             "wave_rub_up_down", "wave_rub_front_back", "static_rub_front_back", "asymmetric_sprint",
-            "foot_slap", "glans_torture",
+            "foot_slap", "glans_torture", "edging_sole_show",
             "single_foot_tease_left", "single_foot_tease_right",
             "single_foot_stroke_left", "single_foot_stroke_right"
         ]
@@ -732,7 +809,7 @@ class DualOSRGui:
 
         # In some modes, we want synchronous base loops
         if mode in ["v_stroke", "wrapping_twist", "sole_rub", "edge_stroking", "heel_press", "circling_tease", "toe_tease",
-                    "wave_rub_front_back", "static_rub_front_back", "asymmetric_sprint", "foot_slap", "glans_torture",
+                    "wave_rub_front_back", "static_rub_front_back", "asymmetric_sprint", "foot_slap", "glans_torture", "edging_sole_show",
                     "single_foot_tease_left", "single_foot_tease_right", "single_foot_stroke_left", "single_foot_stroke_right"]:
             self.controller.phase_shift = 0   # Base phase sync (modes handle mirroring internally if needed)
         else:
