@@ -394,6 +394,71 @@ class DualOSRController:
 
                 cmd_a_parts.extend([f"L0{clamp(pos_a_l0):04d}", f"L2{clamp(pos_a_l2):04d}", f"R2{clamp(pos_a_r2):04d}", f"R1{clamp(center_a_r1):04d}"])
                 cmd_b_parts.extend([f"L0{clamp(pos_b_l0):04d}", f"L2{clamp(pos_b_l2):04d}", f"R2{clamp(pos_b_r2):04d}", f"R1{clamp(center_b_r1):04d}"])
+
+            elif self.motion_mode == "foot_slap":
+                # Foot Slap (脚耳光)
+                # One foot holds back, suddenly strikes (sharp peak), and immediately retreats. Alternating.
+
+                # Slow phase controls the rhythm of the slaps (e.g., 1 slap every full cycle)
+                turn_phase = phase_a * 0.5
+
+                # We use a mathematical trick to create a sharp "slap" profile instead of a smooth sine wave.
+                # max(0, sin(x))^8 creates a flat zero baseline with sudden, sharp peaks.
+                raw_slap_a = max(0, math.sin(phase_a * 2.0)) ** 8
+                raw_slap_b = max(0, math.sin(phase_a * 2.0 + math.pi)) ** 8
+
+                # Only let A slap if turn_phase is positive, B if negative (interleaving them with pauses)
+                # Actually, let's just make them alternate rhythmically without long pauses, like being slapped left and right.
+                z_motion_a = amp_l0 * raw_slap_a
+                z_motion_b = amp_l0 * raw_slap_b
+
+                # Slap is just a fast L0 push, but we want it to be parallel too
+                pos_a_l0 = center_l0 + z_motion_a
+                pos_a_l2 = center_l2 - (z_motion_a * l2_mult)
+
+                pos_b_l0 = center_l0 + z_motion_b
+                pos_b_l2 = center_l2 + (z_motion_b * l2_mult)
+
+                # Accompanied by a sharp pitch to mimic the "snap" of an ankle during a slap
+                pos_a_r2 = center_r2 + (amp_r2 * raw_slap_a)
+                pos_b_r2 = center_r2 - (amp_r2 * raw_slap_b)
+
+                cmd_a_parts.extend([f"L0{clamp(pos_a_l0):04d}", f"L2{clamp(pos_a_l2):04d}", f"R2{clamp(pos_a_r2):04d}", f"R1{clamp(center_a_r1):04d}"])
+                cmd_b_parts.extend([f"L0{clamp(pos_b_l0):04d}", f"L2{clamp(pos_b_l2):04d}", f"R2{clamp(pos_b_r2):04d}", f"R1{clamp(center_b_r1):04d}"])
+
+            elif self.motion_mode == "glans_torture":
+                # Glans Torture (龟头折磨)
+                # Devices stay at the far extension limit (top of the stroke) and vibrate/knead intensely.
+
+                # Shift the center L0 to the far end (simulate staying at the tip)
+                # We use amp_l0 as the offset to push it out.
+                tip_center_l0 = center_l0 + (amp_l0 * 0.8)
+
+                # High frequency, micro amplitude
+                micro_amp_l0 = amp_l0 * 0.15
+                fast_phase = phase_a * 4.0 # 4x speed vibration
+
+                # Micro vertical vibration
+                z_motion = micro_amp_l0 * math.sin(fast_phase)
+
+                pos_l0 = tip_center_l0 + z_motion
+
+                # L2 compensates the new tip center + micro vibration to stay on the parallel track
+                base_l2_offset = amp_l0 * 0.8 * l2_mult
+                micro_l2_offset = z_motion * l2_mult
+
+                pos_a_l2 = center_l2 - base_l2_offset - micro_l2_offset
+                pos_b_l2 = center_l2 + base_l2_offset + micro_l2_offset
+
+                # Intense, fast kneading (R1 Roll + R2 Pitch)
+                pos_a_r1 = center_a_r1 + (amp_r1 * 0.5) * math.sin(fast_phase * 1.5)
+                pos_b_r1 = center_b_r1 - (amp_r1 * 0.5) * math.sin(fast_phase * 1.5)
+
+                pos_a_r2 = center_r2 + (amp_r2 * 0.5) * math.cos(fast_phase)
+                pos_b_r2 = center_r2 - (amp_r2 * 0.5) * math.cos(fast_phase)
+
+                cmd_a_parts.extend([f"L0{clamp(pos_l0):04d}", f"L2{clamp(pos_a_l2):04d}", f"R2{clamp(pos_a_r2):04d}", f"R1{clamp(pos_a_r1):04d}"])
+                cmd_b_parts.extend([f"L0{clamp(pos_l0):04d}", f"L2{clamp(pos_b_l2):04d}", f"R2{clamp(pos_b_r2):04d}", f"R1{clamp(pos_b_r1):04d}"])
             elif self.motion_mode == "single_foot_tease_left":
                 # Left foot teases with rapid flickering pitch, Right foot stays still at base squeeze
                 fast_phase_a = phase_a * 2.0
@@ -549,6 +614,7 @@ class DualOSRGui:
             "v_stroke", "alternating_step", "wrapping_twist", "sole_rub",
             "toe_tease", "edge_stroking", "heel_press", "circling_tease",
             "wave_rub_up_down", "wave_rub_front_back", "static_rub_front_back", "asymmetric_sprint",
+            "foot_slap", "glans_torture",
             "single_foot_tease_left", "single_foot_tease_right",
             "single_foot_stroke_left", "single_foot_stroke_right"
         ]
@@ -666,7 +732,7 @@ class DualOSRGui:
 
         # In some modes, we want synchronous base loops
         if mode in ["v_stroke", "wrapping_twist", "sole_rub", "edge_stroking", "heel_press", "circling_tease", "toe_tease",
-                    "wave_rub_front_back", "static_rub_front_back", "asymmetric_sprint",
+                    "wave_rub_front_back", "static_rub_front_back", "asymmetric_sprint", "foot_slap", "glans_torture",
                     "single_foot_tease_left", "single_foot_tease_right", "single_foot_stroke_left", "single_foot_stroke_right"]:
             self.controller.phase_shift = 0   # Base phase sync (modes handle mirroring internally if needed)
         else:
