@@ -184,7 +184,7 @@ class UdpToSerialRelay:
                                 self.last_udp_addr = addr
                                 self.last_receive_time = time.time()
                                 self.watchdog_triggered = False
-                        except:
+                        except (BlockingIOError, socket.error):
                             break
                     
                     if packets:
@@ -220,7 +220,7 @@ class UdpToSerialRelay:
                             logger.info(f"<- [Device Feedback] {decoded}")
                             if self.last_udp_addr:
                                 self.sock.sendto(line, self.last_udp_addr)
-                except:
+                except Exception:
                     pass
             time.sleep(0.01)
 
