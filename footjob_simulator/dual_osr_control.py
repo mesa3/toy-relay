@@ -84,7 +84,9 @@ class DualOSRController:
         self.twist_amp = 50.0  # R0
         self.base_squeeze = 50.0 # Base L0 offset
         self.ankle_angle_offset = 50.0 # Base R2 offset
+        self.roll_angle_offset = 50.0 # Base R1 offset
         self.motion_mode = "v_stroke"
+        self.reverse_l2 = False # Reverse L2 compensation direction
 
 
         # Device status
@@ -162,18 +164,26 @@ class DualOSRController:
 
             # Amplitudes (0-5000)
             amp_l0 = (self.stroke / 100.0) * 5000
+            amp_l2 = amp_l0  # 45 deg geometry means L1 compensation is 1:1 with L0
             amp_r2 = (self.pitch_amp / 100.0) * 5000
             amp_r1 = (self.roll_amp / 100.0) * 5000
             amp_r0 = (self.twist_amp / 100.0) * 5000
 
             # Centers (0-9999)
             center_l0 = (self.base_squeeze / 100.0) * 9999
-            center_rx = 5000
+            center_l2 = 5000
+            center_a_r1 = (self.roll_angle_offset / 100.0) * 9999
+            center_b_r1 = 9999 - center_a_r1 # Mirror R1 for Device B so they tilt in the same physical direction
+            center_r0 = 5000 # Neutral twist
+            center_rx = center_a_r1 # Backwards compatibility for unmodified modes
             center_r2 = (self.ankle_angle_offset / 100.0) * 9999
 
             # Clamp L0
             if center_l0 - amp_l0 < 0: center_l0 = amp_l0
             if center_l0 + amp_l0 > 9999: center_l0 = 9999 - amp_l0
+
+            # L2 Compensation direction multiplier (based on wall mount orientation)
+            l2_mult = -1.0 if self.reverse_l2 else 1.0
 
             def clamp(val):
                 return max(0, min(9999, int(val)))
@@ -182,44 +192,100 @@ class DualOSRController:
             cmd_b_parts = []
 
             if self.motion_mode == "v_stroke":
-                # Devices are at 45 deg facing center.
-                # L0 pushing out moves feet inwards & forwards.
-                # To keep soles parallel to the center axis, pitch (R2) must tilt toes "up" (relative to the device).
-                # Assuming R2=9999 is pitch up, and R2=0000 is pitch down.
-                pos_l0 = center_l0 + amp_l0 * math.sin(phase_a)
+                # Pure parallel sliding stroke
+                z_motion = amp_l0 * math.sin(phase_a)
+                pos_l0 = center_l0 + z_motion
 
-                # Active pitch compensation: when L0 extends (sin -> +1), R2 pitches UP to compensate for the 45deg downward slope.
-                # Use pitch_amp to control the *intensity* of this compensation.
-                pos_a_r2 = center_r2 + amp_r2 * math.sin(phase_a)
-                pos_b_r2 = center_r2 + amp_r2 * math.sin(phase_a) # Symmetric
+                # Compensate laterally (L2) to maintain grip pressure while stroking
+                pos_a_l2 = center_l2 - (z_motion * l2_mult)
+                pos_b_l2 = center_l2 + (z_motion * l2_mult)
 
-                cmd_a_parts.extend([f"L0{clamp(pos_l0):04d}", f"R2{clamp(pos_a_r2):04d}"])
-                cmd_b_parts.extend([f"L0{clamp(pos_l0):04d}", f"R2{clamp(pos_b_r2):04d}"])
+                cmd_a_parts.extend([f"L0{clamp(pos_l0):04d}", f"L2{clamp(pos_a_l2):04d}", f"R2{clamp(center_r2):04d}", f"R1{clamp(center_a_r1):04d}"])
+                cmd_b_parts.extend([f"L0{clamp(pos_l0):04d}", f"L2{clamp(pos_b_l2):04d}", f"R2{clamp(center_r2):04d}", f"R1{clamp(center_b_r1):04d}"])
 
+
+            elif self.motion_mode == "wave_rub_up_down":
+                # Up-down wave rubbing (上下波浪形揉搓)
+                # Alternating vertical strokes with R1 rolling the arch up and down the shaft
+                z_motion_a = amp_l0 * math.sin(phase_a)
+                z_motion_b = amp_l0 * math.sin(phase_b) # phase_b is 180 deg out because it's no longer in sync list
+
+                pos_a_l0 = center_l0 + z_motion_a
+                pos_b_l0 = center_l0 + z_motion_b
+
+                pos_a_l2 = center_l2 - (z_motion_a * l2_mult)
+                pos_b_l2 = center_l2 + (z_motion_b * l2_mult)
+
+                # R1 rolls dynamically out of phase with the stroke to create a massaging wave
+                # Using standard minus mirror for B + phase_b naturally achieves the physical alternating roll
+                pos_a_r1 = center_a_r1 + amp_r1 * math.cos(phase_a)
+                pos_b_r1 = center_b_r1 - amp_r1 * math.cos(phase_b)
+
+                cmd_a_parts.extend([f"L0{clamp(pos_a_l0):04d}", f"L2{clamp(pos_a_l2):04d}", f"R2{clamp(center_r2):04d}", f"R1{clamp(pos_a_r1):04d}"])
+                cmd_b_parts.extend([f"L0{clamp(pos_b_l0):04d}", f"L2{clamp(pos_b_l2):04d}", f"R2{clamp(center_r2):04d}", f"R1{clamp(pos_b_r1):04d}"])
+
+            elif self.motion_mode == "wave_rub_front_back":
+                # Front-back wave rubbing (前后波浪形揉搓)
+                # Parallel sliding stroke with R2 (Pitch) pitching the toe/heel against the shaft
+                z_motion = amp_l0 * math.sin(phase_a)
+                pos_l0 = center_l0 + z_motion
+
+                pos_a_l2 = center_l2 - (z_motion * l2_mult)
+                pos_b_l2 = center_l2 + (z_motion * l2_mult)
+
+                # R2 pitches dynamically to wipe front/back at a higher frequency (2x)
+                fast_phase = phase_a * 2.0
+                pos_a_r2 = center_r2 + amp_r2 * math.cos(fast_phase)
+                pos_b_r2 = center_r2 - amp_r2 * math.cos(fast_phase) # Alternating rapid pitch
+
+                cmd_a_parts.extend([f"L0{clamp(pos_l0):04d}", f"L2{clamp(pos_a_l2):04d}", f"R2{clamp(pos_a_r2):04d}", f"R1{clamp(center_a_r1):04d}"])
+                cmd_b_parts.extend([f"L0{clamp(pos_l0):04d}", f"L2{clamp(pos_b_l2):04d}", f"R2{clamp(pos_b_r2):04d}", f"R1{clamp(center_b_r1):04d}"])
+
+            elif self.motion_mode == "static_rub_front_back":
+                # Static front-back rubbing (原地前后波浪形揉搓)
+                # No vertical movement. R2 (Pitch) pitches the toe/heel against the shaft.
+                pos_l0 = center_l0
+                pos_a_l2 = center_l2
+                pos_b_l2 = center_l2
+
+                # R2 pitches dynamically to wipe front/back at a higher frequency (2x)
+                fast_phase = phase_a * 2.0
+                pos_a_r2 = center_r2 + amp_r2 * math.cos(fast_phase)
+                pos_b_r2 = center_r2 - amp_r2 * math.cos(fast_phase) # Alternating rapid pitch
+
+                cmd_a_parts.extend([f"L0{clamp(pos_l0):04d}", f"L2{clamp(pos_a_l2):04d}", f"R2{clamp(pos_a_r2):04d}", f"R1{clamp(center_a_r1):04d}"])
+                cmd_b_parts.extend([f"L0{clamp(pos_l0):04d}", f"L2{clamp(pos_b_l2):04d}", f"R2{clamp(pos_b_r2):04d}", f"R1{clamp(center_b_r1):04d}"])
             elif self.motion_mode == "alternating_step":
-                # Left foot pushes in (L0) and points toe down (R2 down, e.g. -R2).
-                # Right foot pulls out (L0) and points toe up (R2 up, e.g. +R2).
-                pos_a_l0 = center_l0 + amp_l0 * math.sin(phase_a)
-                pos_b_l0 = center_l0 + amp_l0 * math.sin(phase_b)
+                # Alternating strokes with parallel L2 compensation
+                z_motion_a = amp_l0 * math.sin(phase_a)
+                z_motion_b = amp_l0 * math.sin(phase_b)
 
-                # When L0 pushes (sin -> +1), R2 pitches down (cos or -sin -> -1).
-                # We use -sin so it's in phase with the stroke: push out -> toe down.
-                pos_a_r2 = center_r2 - amp_r2 * math.sin(phase_a)
-                pos_b_r2 = center_r2 - amp_r2 * math.sin(phase_b)
+                pos_a_l0 = center_l0 + z_motion_a
+                pos_b_l0 = center_l0 + z_motion_b
 
-                cmd_a_parts.extend([f"L0{clamp(pos_a_l0):04d}", f"R2{clamp(pos_a_r2):04d}"])
-                cmd_b_parts.extend([f"L0{clamp(pos_b_l0):04d}", f"R2{clamp(pos_b_r2):04d}"])
+                pos_a_l2 = center_l2 - (z_motion_a * l2_mult)
+                pos_b_l2 = center_l2 + (z_motion_b * l2_mult)
+
+                # Dynamic Alternating Kneading
+                pos_a_r2 = center_r2 + amp_r2 * math.cos(phase_a)
+                pos_b_r2 = center_r2 - amp_r2 * math.cos(phase_b)
+
+                pos_a_r1 = center_a_r1 + amp_r1 * math.sin(phase_a)
+                pos_b_r1 = center_b_r1 - amp_r1 * math.sin(phase_b)
+
+                cmd_a_parts.extend([f"L0{clamp(pos_a_l0):04d}", f"L2{clamp(pos_a_l2):04d}", f"R2{clamp(pos_a_r2):04d}", f"R1{clamp(pos_a_r1):04d}"])
+                cmd_b_parts.extend([f"L0{clamp(pos_b_l0):04d}", f"L2{clamp(pos_b_l2):04d}", f"R2{clamp(pos_b_r2):04d}", f"R1{clamp(pos_b_r1):04d}"])
 
             elif self.motion_mode == "wrapping_twist":
                 # Hold a constant close squeeze (L0).
                 # Roll soles inwards (R1). Assuming +R1 is roll inwards for left foot, then -R1 is inwards for right foot.
                 # (Or vice versa, they should be out of phase to roll symmetrically relative to the center).
-                pos_a_r1 = center_rx + amp_r1 * math.sin(phase_a)
-                pos_b_r1 = center_rx - amp_r1 * math.sin(phase_a) # Mirror roll inwards
+                pos_a_r1 = center_a_r1 + amp_r1 * math.sin(phase_a)
+                pos_b_r1 = center_b_r1 - amp_r1 * math.sin(phase_a) # Mirror roll inwards
 
                 # Alternate twisting to rub the sides (R0)
-                pos_a_r0 = center_rx + amp_r0 * math.cos(phase_a)
-                pos_b_r0 = center_rx + amp_r0 * math.cos(phase_b) # Alternating twist
+                pos_a_r0 = center_r0 + amp_r0 * math.cos(phase_a)
+                pos_b_r0 = center_r0 + amp_r0 * math.cos(phase_b) # Alternating twist
 
                 cmd_a_parts.extend([f"L0{clamp(center_l0):04d}", f"R1{clamp(pos_a_r1):04d}", f"R0{clamp(pos_a_r0):04d}"])
                 cmd_b_parts.extend([f"L0{clamp(center_l0):04d}", f"R1{clamp(pos_b_r1):04d}", f"R0{clamp(pos_b_r0):04d}"])
@@ -228,11 +294,11 @@ class DualOSRController:
                 pos_a_r2 = center_r2 + amp_r2 * math.sin(phase_a)
                 pos_b_r2 = center_r2 + amp_r2 * math.sin(phase_b)
 
-                pos_a_r1 = center_rx + amp_r1 * math.cos(phase_a)
-                pos_b_r1 = center_rx + amp_r1 * math.cos(phase_b)
+                pos_a_r1 = center_a_r1 + amp_r1 * math.cos(phase_a)
+                pos_b_r1 = center_b_r1 + amp_r1 * math.cos(phase_b)
 
-                cmd_a_parts.extend([f"L0{clamp(center_l0):04d}", f"R2{clamp(pos_a_r2):04d}", f"R1{clamp(pos_a_r1):04d}"])
-                cmd_b_parts.extend([f"L0{clamp(center_l0):04d}", f"R2{clamp(pos_b_r2):04d}", f"R1{clamp(pos_b_r1):04d}"])
+                cmd_a_parts.extend([f"L0{clamp(center_l0):04d}", f"L2{clamp(center_l2):04d}", f"R2{clamp(pos_a_r2):04d}", f"R1{clamp(pos_a_r1):04d}"])
+                cmd_b_parts.extend([f"L0{clamp(center_l0):04d}", f"L2{clamp(center_l2):04d}", f"R2{clamp(pos_b_r2):04d}", f"R1{clamp(pos_b_r1):04d}"])
 
             elif self.motion_mode == "toe_tease":
                 # Quick flickering pitch (R2) to tap the toes.
@@ -254,18 +320,22 @@ class DualOSRController:
 
             elif self.motion_mode == "edge_stroking":
                 # Feet roll heavily INWARDS (R1) to create a tight V-groove with the soles touching.
-                # Left rolls in (+R1?), Right rolls in (-R1?). We'll hold it steady.
-                pos_a_r1 = center_rx + amp_r1
-                pos_b_r1 = center_rx - amp_r1
+                pos_a_r1 = center_a_r1 + amp_r1
+                pos_b_r1 = center_b_r1 - amp_r1
 
                 # L0 synchronously strokes up and down the groove
-                pos_l0 = center_l0 + amp_l0 * math.sin(phase_a)
+                z_motion = amp_l0 * math.sin(phase_a)
+                pos_l0 = center_l0 + z_motion
 
-                # Slight pitch to keep the stroke parallel to the target
-                pos_r2 = center_r2 + amp_r2 * math.sin(phase_a)
+                # Compensate laterally
+                pos_a_l2 = center_l2 - (z_motion * l2_mult)
+                pos_b_l2 = center_l2 + (z_motion * l2_mult)
 
-                cmd_a_parts.extend([f"L0{clamp(pos_l0):04d}", f"R1{clamp(pos_a_r1):04d}", f"R2{clamp(pos_r2):04d}"])
-                cmd_b_parts.extend([f"L0{clamp(pos_l0):04d}", f"R1{clamp(pos_b_r1):04d}", f"R2{clamp(pos_r2):04d}"])
+                # Fix pitch to stay parallel instead of bobbing up and down
+                pos_r2 = center_r2
+
+                cmd_a_parts.extend([f"L0{clamp(pos_l0):04d}", f"L2{clamp(pos_a_l2):04d}", f"R1{clamp(pos_a_r1):04d}", f"R2{clamp(pos_r2):04d}"])
+                cmd_b_parts.extend([f"L0{clamp(pos_l0):04d}", f"L2{clamp(pos_b_l2):04d}", f"R1{clamp(pos_b_r1):04d}", f"R2{clamp(pos_r2):04d}"])
 
             elif self.motion_mode == "heel_press":
                 # Toes pitched heavily UP (away from target) to expose the heels.
@@ -277,38 +347,232 @@ class DualOSRController:
                 pos_l0 = center_l0 + amp_l0 * math.sin(slow_phase)
 
                 # Twisting (R0) slightly back and forth to grind the heels
-                pos_a_r0 = center_rx + amp_r0 * math.cos(slow_phase)
-                pos_b_r0 = center_rx - amp_r0 * math.cos(slow_phase)
+                pos_a_r0 = center_r0 + amp_r0 * math.cos(slow_phase)
+                pos_b_r0 = center_r0 - amp_r0 * math.cos(slow_phase)
 
                 cmd_a_parts.extend([f"L0{clamp(pos_l0):04d}", f"R2{clamp(pos_r2):04d}", f"R0{clamp(pos_a_r0):04d}"])
                 cmd_b_parts.extend([f"L0{clamp(pos_l0):04d}", f"R2{clamp(pos_r2):04d}", f"R0{clamp(pos_b_r0):04d}"])
 
             elif self.motion_mode == "circling_tease":
-                # Feet held gently on the target.
-                # Roll (R1) and Pitch (R2) move in a circular sine/cosine pattern to create a grinding orbital motion.
-                pos_a_r1 = center_rx + amp_r1 * math.sin(phase_a)
-                pos_b_r1 = center_rx - amp_r1 * math.sin(phase_a) # mirror roll
+                pos_a_r1 = center_a_r1 + amp_r1 * math.sin(phase_a)
+                pos_b_r1 = center_b_r1 - amp_r1 * math.sin(phase_a)
 
                 pos_a_r2 = center_r2 + amp_r2 * math.cos(phase_a)
-                pos_b_r2 = center_r2 + amp_r2 * math.cos(phase_a) # sync pitch
+                pos_b_r2 = center_r2 + amp_r2 * math.cos(phase_a)
 
-                cmd_a_parts.extend([f"L0{clamp(center_l0):04d}", f"R1{clamp(pos_a_r1):04d}", f"R2{clamp(pos_a_r2):04d}"])
-                cmd_b_parts.extend([f"L0{clamp(center_l0):04d}", f"R1{clamp(pos_b_r1):04d}", f"R2{clamp(pos_b_r2):04d}"])
+                cmd_a_parts.extend([f"L0{clamp(center_l0):04d}", f"L2{clamp(center_l2):04d}", f"R1{clamp(pos_a_r1):04d}", f"R2{clamp(pos_a_r2):04d}"])
+                cmd_b_parts.extend([f"L0{clamp(center_l0):04d}", f"L2{clamp(center_l2):04d}", f"R1{clamp(pos_b_r1):04d}", f"R2{clamp(pos_b_r2):04d}"])
 
+
+            elif self.motion_mode == "asymmetric_sprint":
+                # Asymmetric Sprint (双机非对称冲刺)
+                # One foot strokes rapidly while the other holds still, then they switch.
+
+                # Slow phase controls the turn (e.g., switch every 2.5 full cycles)
+                turn_phase = phase_a * 0.2
+                # Fast phase for the sprint
+                sprint_phase = phase_a * 2.5
+
+                if math.sin(turn_phase) > 0:
+                    # Device A's turn to sprint
+                    z_motion_a = amp_l0 * math.sin(sprint_phase)
+                    z_motion_b = 0 # B holds still
+                else:
+                    # Device B's turn to sprint
+                    z_motion_a = 0 # A holds still
+                    z_motion_b = amp_l0 * math.sin(sprint_phase)
+
+                pos_a_l0 = center_l0 + z_motion_a
+                pos_a_l2 = center_l2 - (z_motion_a * l2_mult)
+
+                pos_b_l0 = center_l0 + z_motion_b
+                pos_b_l2 = center_l2 + (z_motion_b * l2_mult)
+
+                # Add a little teasing pitch wag to the active foot
+                pos_a_r2 = center_r2 + (amp_r2 * 0.5 * math.cos(sprint_phase) if z_motion_a != 0 else 0)
+                pos_b_r2 = center_r2 - (amp_r2 * 0.5 * math.cos(sprint_phase) if z_motion_b != 0 else 0)
+
+                cmd_a_parts.extend([f"L0{clamp(pos_a_l0):04d}", f"L2{clamp(pos_a_l2):04d}", f"R2{clamp(pos_a_r2):04d}", f"R1{clamp(center_a_r1):04d}"])
+                cmd_b_parts.extend([f"L0{clamp(pos_b_l0):04d}", f"L2{clamp(pos_b_l2):04d}", f"R2{clamp(pos_b_r2):04d}", f"R1{clamp(center_b_r1):04d}"])
+
+            elif self.motion_mode == "foot_slap":
+                # Foot Slap V3 (严谨节奏的单脚轮流大力扇耳光)
+                # 节奏: A蓄力 -> A扇! -> A退回 -> B蓄力 -> B扇! -> B退回
+                # 在一方动作时，另一方完全停在远处（Parked），绝不干涉。
+
+                # director 进度 0.0 到 1.0 (控制完整的左右脚一轮)
+                # 减慢一点整体进度，给舵机留出“大力挥动”的物理时间
+                director = ( (phase_a * 0.4) % (2 * math.pi) ) / (2 * math.pi)
+
+                # 定义几个关键位置
+                park_l0 = center_l0 - amp_l0 * 0.5   # 停靠时稍微后退
+                park_l2_offset = amp_l0 * 0.8        # 停靠时向外侧躲开
+
+                windup_l0 = center_l0 - amp_l0       # 蓄力时退到最远
+                windup_l2_offset = amp_l0            # 蓄力时张到最大
+                windup_r2 = center_r2 + amp_r2       # 蓄力时脚腕上翻
+
+                slap_l0 = center_l0 + amp_l0 * 0.5   # 扇下去时往前怼
+                slap_l2_offset = 0                   # 扇下去时直击中心
+                slap_r2 = center_r2 - amp_r2         # 扇下去时脚腕下压（鞭打）
+
+                # 辅助函数：在两点之间线性插值
+                def lerp(start, end, progress):
+                    return start + (end - start) * progress
+
+                def get_kinematics(local_prog):
+                    # 0.0-0.6: 缓慢蓄力 (Windup)
+                    # 0.6-0.7: 瞬间爆击 (Slap!)
+                    # 0.7-1.0: 快速收回 (Recover to Park)
+                    if local_prog < 0.6:
+                        p = local_prog / 0.6
+                        l0 = lerp(park_l0, windup_l0, p)
+                        l2_off = lerp(park_l2_offset, windup_l2_offset, p)
+                        r2 = lerp(center_r2, windup_r2, p)
+                    elif local_prog < 0.7:
+                        p = (local_prog - 0.6) / 0.1
+                        l0 = lerp(windup_l0, slap_l0, p)
+                        l2_off = lerp(windup_l2_offset, slap_l2_offset, p)
+                        r2 = lerp(windup_r2, slap_r2, p)
+                    else:
+                        p = (local_prog - 0.7) / 0.3
+                        l0 = lerp(slap_l0, park_l0, p)
+                        l2_off = lerp(slap_l2_offset, park_l2_offset, p)
+                        r2 = lerp(slap_r2, center_r2, p)
+                    return l0, l2_off, r2
+
+                if director < 0.5:
+                    # Device A's turn
+                    local_a = director / 0.5
+                    l0_a, l2_off_a, r2_a = get_kinematics(local_a)
+
+                    pos_a_l0 = l0_a
+                    pos_a_l2 = center_l2 - (l2_off_a * l2_mult)
+                    pos_a_r2 = r2_a
+                    pos_a_r1 = center_a_r1 # 不加roll，纯靠L2和R2的力量
+
+                    # B is parked
+                    pos_b_l0 = park_l0
+                    pos_b_l2 = center_l2 + (park_l2_offset * l2_mult)
+                    pos_b_r2 = center_r2
+                    pos_b_r1 = center_b_r1
+                else:
+                    # Device B's turn
+                    local_b = (director - 0.5) / 0.5
+                    l0_b, l2_off_b, r2_b = get_kinematics(local_b)
+
+                    # A is parked
+                    pos_a_l0 = park_l0
+                    pos_a_l2 = center_l2 - (park_l2_offset * l2_mult)
+                    pos_a_r2 = center_r2
+                    pos_a_r1 = center_a_r1
+
+                    pos_b_l0 = l0_b
+                    pos_b_l2 = center_l2 + (l2_off_b * l2_mult)
+                    pos_b_r2 = r2_b
+                    pos_b_r1 = center_b_r1
+
+                cmd_a_parts.extend([f"L0{clamp(pos_a_l0):04d}", f"L2{clamp(pos_a_l2):04d}", f"R2{clamp(pos_a_r2):04d}", f"R1{clamp(pos_a_r1):04d}"])
+                cmd_b_parts.extend([f"L0{clamp(pos_b_l0):04d}", f"L2{clamp(pos_b_l2):04d}", f"R2{clamp(pos_b_r2):04d}", f"R1{clamp(pos_b_r1):04d}"])
+
+            elif self.motion_mode == "glans_torture":
+                # Glans Torture (龟头折磨)
+                # Devices stay at the far extension limit (top of the stroke) and vibrate/knead intensely.
+
+                # Shift the center L0 to the far end (simulate staying at the tip)
+                # We use amp_l0 as the offset to push it out.
+                tip_center_l0 = center_l0 + (amp_l0 * 0.8)
+
+                # High frequency, micro amplitude
+                micro_amp_l0 = amp_l0 * 0.15
+                fast_phase = phase_a * 4.0 # 4x speed vibration
+
+                # Micro vertical vibration
+                z_motion = micro_amp_l0 * math.sin(fast_phase)
+
+                pos_l0 = tip_center_l0 + z_motion
+
+                # L2 compensates the new tip center + micro vibration to stay on the parallel track
+                base_l2_offset = amp_l0 * 0.8 * l2_mult
+                micro_l2_offset = z_motion * l2_mult
+
+                pos_a_l2 = center_l2 - base_l2_offset - micro_l2_offset
+                pos_b_l2 = center_l2 + base_l2_offset + micro_l2_offset
+
+                # Intense, fast kneading (R1 Roll + R2 Pitch)
+                pos_a_r1 = center_a_r1 + (amp_r1 * 0.5) * math.sin(fast_phase * 1.5)
+                pos_b_r1 = center_b_r1 - (amp_r1 * 0.5) * math.sin(fast_phase * 1.5)
+
+                pos_a_r2 = center_r2 + (amp_r2 * 0.5) * math.cos(fast_phase)
+                pos_b_r2 = center_r2 - (amp_r2 * 0.5) * math.cos(fast_phase)
+
+                cmd_a_parts.extend([f"L0{clamp(pos_l0):04d}", f"L2{clamp(pos_a_l2):04d}", f"R2{clamp(pos_a_r2):04d}", f"R1{clamp(pos_a_r1):04d}"])
+                cmd_b_parts.extend([f"L0{clamp(pos_l0):04d}", f"L2{clamp(pos_b_l2):04d}", f"R2{clamp(pos_b_r2):04d}", f"R1{clamp(pos_b_r1):04d}"])
+
+            elif self.motion_mode == "edging_sole_show":
+                # Edging Sole Show (寸止展示脚底)
+                # Fast strokes followed by a sudden stop, pulling back, spreading wide, and pitching up to show soles.
+
+                # Director phase: slow cycle to toggle between stroking and showing
+                # Let's say 1 full director cycle = 5 fast stroke cycles.
+                # Director > 0 (stroking phase), Director < 0 (show phase)
+                director = math.sin(phase_a * 0.2)
+                fast_phase = phase_a * 2.0
+
+                if director > 0:
+                    # Stroking Phase (Fast parallel v_stroke)
+                    # We add a smooth transition based on the director sine to avoid harsh snaps,
+                    # but for now a direct cut is fine since they are T-code commands.
+                    z_motion = amp_l0 * math.sin(fast_phase)
+
+                    pos_l0 = center_l0 + z_motion
+                    pos_a_l2 = center_l2 - (z_motion * l2_mult)
+                    pos_b_l2 = center_l2 + (z_motion * l2_mult)
+
+                    # Normal pitch and roll
+                    pos_a_r2 = center_r2
+                    pos_b_r2 = center_r2
+                    pos_a_r1 = center_a_r1
+                    pos_b_r1 = center_b_r1
+
+                else:
+                    # Show Phase (Pulled back, spread open, soles pitched up)
+                    # Pull L0 all the way back
+                    pos_l0 = center_l0 - amp_l0
+
+                    # Spread L2 wide (outward)
+                    # L2 moving outward: A moves left (subtract), B moves right (add)
+                    pos_a_l2 = center_l2 - (amp_l0 * l2_mult)
+                    pos_b_l2 = center_l2 + (amp_l0 * l2_mult)
+
+                    # Pitch (R2) heavily up to expose sole
+                    pos_a_r2 = center_r2 + amp_r2
+                    pos_b_r2 = center_r2 + amp_r2
+
+                    # Roll (R1) optional, let's keep it flat or slight inward
+                    pos_a_r1 = center_a_r1
+                    pos_b_r1 = center_b_r1
+
+                cmd_a_parts.extend([f"L0{clamp(pos_l0):04d}", f"L2{clamp(pos_a_l2):04d}", f"R2{clamp(pos_a_r2):04d}", f"R1{clamp(pos_a_r1):04d}"])
+                cmd_b_parts.extend([f"L0{clamp(pos_l0):04d}", f"L2{clamp(pos_b_l2):04d}", f"R2{clamp(pos_b_r2):04d}", f"R1{clamp(pos_b_r1):04d}"])
             elif self.motion_mode == "single_foot_tease_left":
                 # Left foot teases with rapid flickering pitch, Right foot stays still at base squeeze
                 fast_phase_a = phase_a * 2.0
 
                 # Active Left (Device A)
                 pos_a_r2 = center_r2 - (amp_r2 / 2.0) - (amp_r2 / 2.0) * math.sin(fast_phase_a)
-                pos_a_l0 = center_l0 + (amp_l0 * 0.1) * math.sin(phase_a)
+
+                z_motion_a = (amp_l0 * 0.1) * math.sin(phase_a)
+                pos_a_l0 = center_l0 + z_motion_a
+                pos_a_l2 = center_l2 - (z_motion_a * l2_mult)
 
                 # Static Right (Device B)
                 pos_b_r2 = center_r2
                 pos_b_l0 = center_l0
+                pos_b_l2 = center_l2
 
-                cmd_a_parts.extend([f"L0{clamp(pos_a_l0):04d}", f"R2{clamp(pos_a_r2):04d}"])
-                cmd_b_parts.extend([f"L0{clamp(pos_b_l0):04d}", f"R2{clamp(pos_b_r2):04d}"])
+                cmd_a_parts.extend([f"L0{clamp(pos_a_l0):04d}", f"L2{clamp(pos_a_l2):04d}", f"R2{clamp(pos_a_r2):04d}"])
+                cmd_b_parts.extend([f"L0{clamp(pos_b_l0):04d}", f"L2{clamp(pos_b_l2):04d}", f"R2{clamp(pos_b_r2):04d}"])
 
             elif self.motion_mode == "single_foot_tease_right":
                 # Right foot teases with rapid flickering pitch, Left foot stays still at base squeeze
@@ -326,26 +590,26 @@ class DualOSRController:
                 cmd_b_parts.extend([f"L0{clamp(pos_b_l0):04d}", f"R2{clamp(pos_b_r2):04d}"])
 
             elif self.motion_mode == "single_foot_stroke_left":
-                # Left foot strokes with pitch compensation, Right foot holds still
-                pos_a_l0 = center_l0 + amp_l0 * math.sin(phase_a)
-                pos_a_r2 = center_r2 + amp_r2 * math.sin(phase_a)
+                z_motion_a = amp_l0 * math.sin(phase_a)
+                pos_a_l0 = center_l0 + z_motion_a
+                pos_a_l2 = center_l2 - (z_motion_a * l2_mult)
 
                 pos_b_l0 = center_l0
-                pos_b_r2 = center_r2
+                pos_b_l2 = center_l2
 
-                cmd_a_parts.extend([f"L0{clamp(pos_a_l0):04d}", f"R2{clamp(pos_a_r2):04d}"])
-                cmd_b_parts.extend([f"L0{clamp(pos_b_l0):04d}", f"R2{clamp(pos_b_r2):04d}"])
+                cmd_a_parts.extend([f"L0{clamp(pos_a_l0):04d}", f"L2{clamp(pos_a_l2):04d}", f"R2{clamp(center_r2):04d}"])
+                cmd_b_parts.extend([f"L0{clamp(pos_b_l0):04d}", f"L2{clamp(pos_b_l2):04d}", f"R2{clamp(center_r2):04d}"])
 
             elif self.motion_mode == "single_foot_stroke_right":
-                # Right foot strokes with pitch compensation, Left foot holds still
                 pos_a_l0 = center_l0
-                pos_a_r2 = center_r2
+                pos_a_l2 = center_l2
 
-                pos_b_l0 = center_l0 + amp_l0 * math.sin(phase_a) # Use phase_a for the active foot
-                pos_b_r2 = center_r2 + amp_r2 * math.sin(phase_a)
+                z_motion_b = amp_l0 * math.sin(phase_a) # Use phase_a for the active foot
+                pos_b_l0 = center_l0 + z_motion_b
+                pos_b_l2 = center_l2 + (z_motion_b * l2_mult)
 
-                cmd_a_parts.extend([f"L0{clamp(pos_a_l0):04d}", f"R2{clamp(pos_a_r2):04d}"])
-                cmd_b_parts.extend([f"L0{clamp(pos_b_l0):04d}", f"R2{clamp(pos_b_r2):04d}"])
+                cmd_a_parts.extend([f"L0{clamp(pos_a_l0):04d}", f"L2{clamp(pos_a_l2):04d}", f"R2{clamp(center_r2):04d}"])
+                cmd_b_parts.extend([f"L0{clamp(pos_b_l0):04d}", f"L2{clamp(pos_b_l2):04d}", f"R2{clamp(center_r2):04d}"])
 
             else: # fallback
                 pos_a = center_l0 + amp_l0 * math.sin(phase_a)
@@ -445,6 +709,8 @@ class DualOSRGui:
         modes = [
             "v_stroke", "alternating_step", "wrapping_twist", "sole_rub",
             "toe_tease", "edge_stroking", "heel_press", "circling_tease",
+            "wave_rub_up_down", "wave_rub_front_back", "static_rub_front_back", "asymmetric_sprint",
+            "foot_slap", "glans_torture", "edging_sole_show",
             "single_foot_tease_left", "single_foot_tease_right",
             "single_foot_stroke_left", "single_foot_stroke_right"
         ]
@@ -473,6 +739,12 @@ class DualOSRGui:
         self.ankle_scale = ttk.Scale(adv_frame, from_=0.0, to=100.0, variable=self.ankle_offset_var, command=self.update_params)
         self.ankle_scale.pack(fill="x", padx=5, pady=2)
 
+        # Ankle Roll Offset (R1 Base)
+        ttk.Label(adv_frame, text="Ankle Roll Offset R1 Base (%):").pack(anchor="w", padx=5)
+        self.roll_offset_var = tk.DoubleVar(value=50.0)
+        self.roll_offset_scale = ttk.Scale(adv_frame, from_=0.0, to=100.0, variable=self.roll_offset_var, command=self.update_params)
+        self.roll_offset_scale.pack(fill="x", padx=5, pady=2)
+
         # Pitch (R2)
         ttk.Label(adv_frame, text="Pitch Amplitude R2 (%):").pack(anchor="w", padx=5)
         self.pitch_amp_var = tk.DoubleVar(value=50.0)
@@ -490,6 +762,10 @@ class DualOSRGui:
         self.twist_amp_var = tk.DoubleVar(value=50.0)
         self.twist_scale = ttk.Scale(adv_frame, from_=0.0, to=100.0, variable=self.twist_amp_var, command=self.update_params)
         self.twist_scale.pack(fill="x", padx=5, pady=2)
+
+        self.reverse_l2_var = tk.BooleanVar(value=False)
+        self.reverse_l2_check = ttk.Checkbutton(adv_frame, text="Reverse L2 Compensation Direction", variable=self.reverse_l2_var, command=self.update_params)
+        self.reverse_l2_check.pack(anchor="w", padx=5, pady=5)
 
         # Start/Stop
         self.btn_start = ttk.Button(self.root, text="START MOTION", command=self.toggle_motion)
@@ -541,15 +817,18 @@ class DualOSRGui:
         self.controller.stroke = self.stroke_var.get()
         self.controller.base_squeeze = self.base_squeeze_var.get()
         self.controller.ankle_angle_offset = self.ankle_offset_var.get()
+        self.controller.roll_angle_offset = self.roll_offset_var.get()
         self.controller.pitch_amp = self.pitch_amp_var.get()
         self.controller.roll_amp = self.roll_amp_var.get()
         self.controller.twist_amp = self.twist_amp_var.get()
+        self.controller.reverse_l2 = self.reverse_l2_var.get()
 
         mode = self.mode_var.get()
         self.controller.motion_mode = mode
 
         # In some modes, we want synchronous base loops
         if mode in ["v_stroke", "wrapping_twist", "sole_rub", "edge_stroking", "heel_press", "circling_tease", "toe_tease",
+                    "wave_rub_front_back", "static_rub_front_back", "asymmetric_sprint", "foot_slap", "glans_torture", "edging_sole_show",
                     "single_foot_tease_left", "single_foot_tease_right", "single_foot_stroke_left", "single_foot_stroke_right"]:
             self.controller.phase_shift = 0   # Base phase sync (modes handle mirroring internally if needed)
         else:
