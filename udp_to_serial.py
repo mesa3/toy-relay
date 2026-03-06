@@ -66,15 +66,19 @@ class TCodeWSServer:
             self.loop.call_soon_threadsafe(self.loop.stop)
             logger.info("WebSocket server stopped")
 
+    async def _broadcast_coro(self, message):
+        if self.clients:
+            await asyncio.gather(*[client.send(message) for client in self.clients], return_exceptions=True)
+
     def broadcast(self, message):
+        """Broadcasts message to all connected clients.
+        ⚡ Optimized: Extracted inner async function to a class method
+        to prevent redundant object creation overhead per broadcast.
+        """
         if not self.running or not self.clients or not self.loop:
             return
 
-        async def _broadcast():
-            if self.clients:
-                await asyncio.gather(*[client.send(message) for client in self.clients], return_exceptions=True)
-
-        asyncio.run_coroutine_threadsafe(_broadcast(), self.loop)
+        asyncio.run_coroutine_threadsafe(self._broadcast_coro(message), self.loop)
 
 class UdpToSerialRelay:
     def __init__(self, udp_ip: str, udp_port: int, serial_port: str, baud_rate: int, dummy: bool = False, verbose: bool = False, ws_server: TCodeWSServer = None):
@@ -182,12 +186,13 @@ class UdpToSerialRelay:
                             if data:
                                 packets.append(data)
                                 self.last_udp_addr = addr
-                                self.last_receive_time = time.time()
-                                self.watchdog_triggered = False
                         except (BlockingIOError, socket.error):
                             break
                     
                     if packets:
+                        # ⚡ Optimized: Moved system calls outside the tight socket reading loop
+                        self.last_receive_time = time.time()
+                        self.watchdog_triggered = False
                         merged_cmd = self.process_tcode_buffer(packets)
                         if merged_cmd:
                             if self.ws_server:
