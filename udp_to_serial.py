@@ -195,12 +195,14 @@ class UdpToSerialRelay:
                         self.watchdog_triggered = False
                         merged_cmd = self.process_tcode_buffer(packets)
                         if merged_cmd:
+                            # ⚡ Optimized: Cache stripped string to avoid redundant allocations in hot loop
+                            stripped_cmd = merged_cmd.strip()
                             if self.ws_server:
-                                self.ws_server.broadcast(merged_cmd.strip())
+                                self.ws_server.broadcast(stripped_cmd)
                             if not self.dummy and self.ser:
                                 self.ser.write(merged_cmd.encode())
                             if self.verbose:
-                                logger.info(f"-> {merged_cmd.strip()}")
+                                logger.info(f"-> {stripped_cmd}")
 
                 # Safety watchdog
                 if not self.watchdog_triggered and (time.time() - self.last_receive_time > 2.0):
