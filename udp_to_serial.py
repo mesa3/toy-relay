@@ -147,17 +147,16 @@ class UdpToSerialRelay:
             return None
 
         combined_packet = b" ".join(packets)
-        decoded = combined_packet.decode(errors='replace').upper()
+        # ⚡ Optimized: Strip all spaces upfront to avoid regex backtracking and redundant string replacements per match
+        decoded = combined_packet.decode(errors='replace').upper().replace(" ", "")
         
-        axis_state = {}
-        for axis, cmd in TCODE_REGEX.findall(decoded):
-            # Remove spaces from command for standardization
-            axis_state[axis] = cmd.replace(" ", "")
+        axis_state = dict(TCODE_REGEX.findall(decoded))
 
         if not axis_state:
             return None
         
-        merged = " ".join([f"{axis}{cmd}" for axis, cmd in axis_state.items()])
+        # ⚡ Optimized: Direct string concatenation instead of f-string
+        merged = " ".join([axis + cmd for axis, cmd in axis_state.items()])
         return merged + "\n"
 
     def run(self):
@@ -195,7 +194,7 @@ class UdpToSerialRelay:
                         self.watchdog_triggered = False
                         merged_cmd = self.process_tcode_buffer(packets)
                         if merged_cmd:
-                            # ⚡ Optimized: Cache stripped string to avoid redundant allocations in hot loop
+                            # ⚡ Optimized: Cache result of idempotent string operations in local variable
                             stripped_cmd = merged_cmd.strip()
                             if self.ws_server:
                                 self.ws_server.broadcast(stripped_cmd)
