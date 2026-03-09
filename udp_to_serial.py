@@ -147,12 +147,10 @@ class UdpToSerialRelay:
             return None
 
         combined_packet = b" ".join(packets)
-        decoded = combined_packet.decode(errors='replace').upper()
+        # ⚡ Optimized: Strip all spaces upfront to avoid regex backtracking and redundant string replacements per match
+        decoded = combined_packet.decode(errors='replace').upper().replace(" ", "")
         
-        axis_state = {}
-        for axis, cmd in TCODE_REGEX.findall(decoded):
-            # Remove spaces from command for standardization
-            axis_state[axis] = cmd.replace(" ", "")
+        axis_state = dict(TCODE_REGEX.findall(decoded))
 
         if not axis_state:
             return None

@@ -9,3 +9,7 @@
 ## 2024-05-24 - String Optimization in Relay Hot Loops
 **Learning:** In high-frequency hot loops (e.g. processing ~50 UDP packets/second), calling `str.strip()` multiple times on the same object, and using `f"{var1}{var2}"` inside list comprehensions over dictionaries adds measurable overhead.
 **Action:** Always cache idempotent string method results (like `.strip()`) in a local variable if used by multiple sinks (like logging and Websockets). Use direct string concatenation `[var1 + var2]` instead of `[f"{var1}{var2}"]` for simple loops where string operations are dominant, as tests showed it's ~35% faster.
+
+## 2024-05-25 - Bulk String Replacements over Loop-Based Replacements
+**Learning:** In text parsing where tokens are extracted using a regex (like T-Code commands) and subsequent cleanup (like removing spaces) is performed on each matched group within a loop, the loop overhead and multiple `.replace()` calls create a bottleneck.
+**Action:** Pre-process the entire string (e.g., `decoded.replace(" ", "")`) before running the regex to eliminate the spaces outright. This avoids backtracking, allows the use of faster built-in C functions like `dict()` over regex groups instead of manual loop assignments, and significantly reduces Python-level loop overhead.
