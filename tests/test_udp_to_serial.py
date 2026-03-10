@@ -118,5 +118,34 @@ class TestUdpToSerialRelay(unittest.TestCase):
         self.assertIn("A05000", result)
         self.assertIn("L09999I200", result)
 
+    @patch('udp_to_serial.serial.Serial')
+    def test_setup_connections_serial_failure_raises(self, mock_serial):
+        """Test that setup_connections raises exception on serial failure when not in dummy mode"""
+        relay = UdpToSerialRelay(self.udp_ip, self.udp_port, self.serial_port, self.baud_rate, dummy=False)
+        mock_serial.side_effect = Exception("Serial failure")
+
+        with self.assertRaises(Exception) as cm:
+            relay.setup_connections()
+        self.assertEqual(str(cm.exception), "Serial failure")
+
+    @patch('udp_to_serial.socket.socket')
+    def test_setup_connections_socket_failure_raises(self, mock_socket):
+        """Test that setup_connections raises exception on socket failure when not in dummy mode"""
+        relay = UdpToSerialRelay(self.udp_ip, self.udp_port, self.serial_port, self.baud_rate, dummy=False)
+        mock_socket.side_effect = Exception("Socket failure")
+
+        with self.assertRaises(Exception) as cm:
+            relay.setup_connections()
+        self.assertEqual(str(cm.exception), "Socket failure")
+
+    @patch('udp_to_serial.socket.socket')
+    def test_setup_connections_socket_failure_dummy_no_raise(self, mock_socket):
+        """Test that setup_connections DOES NOT raise exception on socket failure when in dummy mode"""
+        relay = UdpToSerialRelay(self.udp_ip, self.udp_port, self.serial_port, self.baud_rate, dummy=True)
+        mock_socket.side_effect = Exception("Socket failure")
+
+        # Should not raise
+        relay.setup_connections()
+
 if __name__ == '__main__':
     unittest.main()
