@@ -146,9 +146,10 @@ class UdpToSerialRelay:
         if not packets:
             return None
 
-        combined_packet = b" ".join(packets)
-        # ⚡ Optimized: Strip all spaces upfront to avoid regex backtracking and redundant string replacements per match
-        decoded = combined_packet.decode(errors='replace').upper().replace(" ", "")
+        # ⚡ Optimized: Join directly without adding spaces (`b"".join` instead of `b" ".join`).
+        combined_packet = b"".join(packets)
+        # ⚡ Optimized: Strip spaces in C-backed byte domain before string decoding to reduce decode overhead
+        decoded = combined_packet.replace(b" ", b"").decode(errors='replace').upper()
         
         axis_state = dict(TCODE_REGEX.findall(decoded))
 
