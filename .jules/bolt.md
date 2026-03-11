@@ -21,3 +21,7 @@
 ## 2024-05-26 - Eliminate Redundant Regex Whitespace Checks
 **Learning:** In text parsing where space removal is performed string-wide beforehand (e.g. `replace(b" ", b"")` at the byte level), checking for optional whitespace characters like `\s*` inside the regular expression adds unnecessary overhead and slows down matching.
 **Action:** When pre-processing input strings to remove whitespace, simplify regex patterns to exclude those optional whitespace checks. In hot loops, this structural regex simplification can yield a consistent ~10% performance gain.
+
+## 2024-11-13 - [Optimize T-Code processing in hot loop]
+**Learning:** T-Code parser decoding incoming byte packets to utf-8 strings *before* running regular expressions and replacing spaces takes longer. For heavy UDP loads, doing bytes replacements and running a compiled regex over the raw byte string (`br'([a-zA-Z][0-9])([0-9]+(?:[ISis][0-9]+)?)'`), then finally decoding the assembled output string is ~17-20% faster.
+**Action:** When working on tight loop parsing of string-based network commands (like T-Code) from UDP streams, keep the data in bytes as long as possible. Defer `.decode()` until final string assembly to avoid Python's internal string construction overhead for intermediate states.

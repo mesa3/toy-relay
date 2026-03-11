@@ -28,6 +28,9 @@ logger.setLevel(logging.INFO)
 # ⚡ Optimized: Removed \s* checks because spaces are stripped at the byte level before decoding, yielding ~10% faster regex matching
 TCODE_REGEX = re.compile(r'([A-Z][0-9])([0-9]+(?:[IS][0-9]+)?)')
 
+# ⚡ Optimized: Byte-level regex to avoid string decoding overhead prior to regex evaluation
+TCODE_REGEX_BYTES = re.compile(br'([a-zA-Z][0-9])([0-9]+(?:[ISis][0-9]+)?)')
+
 
 class TCodeWSServer:
     def __init__(self, port=8765):
@@ -149,17 +152,17 @@ class UdpToSerialRelay:
 
         # ⚡ Optimized: Join directly without adding spaces (`b"".join` instead of `b" ".join`).
         combined_packet = b"".join(packets)
-        # ⚡ Optimized: Strip spaces in C-backed byte domain before string decoding to reduce decode overhead
-        decoded = combined_packet.replace(b" ", b"").decode(errors='replace').upper()
-        
-        axis_state = dict(TCODE_REGEX.findall(decoded))
+        # ⚡ Optimized: Strip spaces in C-backed byte domain.
+        # Evaluate regex directly on bytes to avoid string decode overhead.
+        axis_state = dict(TCODE_REGEX_BYTES.findall(combined_packet.replace(b" ", b"")))
 
         if not axis_state:
             return None
         
-        # ⚡ Optimized: Direct string concatenation instead of f-string
-        merged = " ".join([axis + cmd for axis, cmd in axis_state.items()])
-        return merged + "\n"
+        # ⚡ Optimized: Direct string concatenation instead of f-string.
+        # Join bytes, then decode and uppercase just before returning.
+        merged = b" ".join([axis + cmd for axis, cmd in axis_state.items()])
+        return merged.decode(errors='replace').upper() + "\n"
 
     def run(self):
         try:
