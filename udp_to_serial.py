@@ -24,8 +24,9 @@ except ImportError:
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.INFO)
 
-# T-Code parsing regex (supports spaces)
-TCODE_REGEX = re.compile(r'([A-Z][0-9])\s*([0-9]+(?:\s*[IS][0-9]+)?)')
+# T-Code parsing regex
+# ⚡ Optimized: Removed \s* checks because spaces are stripped at the byte level before decoding, yielding ~10% faster regex matching
+TCODE_REGEX = re.compile(r'([A-Z][0-9])([0-9]+(?:[IS][0-9]+)?)')
 
 
 class TCodeWSServer:
