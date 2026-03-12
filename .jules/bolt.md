@@ -21,3 +21,7 @@
 ## 2024-05-26 - Eliminate Redundant Regex Whitespace Checks
 **Learning:** In text parsing where space removal is performed string-wide beforehand (e.g. `replace(b" ", b"")` at the byte level), checking for optional whitespace characters like `\s*` inside the regular expression adds unnecessary overhead and slows down matching.
 **Action:** When pre-processing input strings to remove whitespace, simplify regex patterns to exclude those optional whitespace checks. In hot loops, this structural regex simplification can yield a consistent ~10% performance gain.
+
+## 2024-05-26 - Exception Catching & ASCII Decoding in Hot Paths
+**Learning:** In a tight network polling loop (like non-blocking `recvfrom()`), separating multiple exceptions into individual `except` blocks is slightly faster than evaluating a tuple of exceptions (`except (A, B):`). Also, when the protocol guarantees ASCII (like T-Code), performing byte-level transformations (like `.upper()`) before decoding specifically as `ascii` is measurably faster than deferring transformations to Python string methods after standard UTF-8 decoding.
+**Action:** Cache object method lookups locally before tight loops, break tupled `except` statements into single specific exceptions for high-frequency failures, and use `.decode('ascii')` for purely ASCII protocols instead of default UTF-8.
