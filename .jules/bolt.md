@@ -25,3 +25,11 @@
 ## 2024-11-13 - [Optimize T-Code processing in hot loop]
 **Learning:** T-Code parser decoding incoming byte packets to utf-8 strings *before* running regular expressions and replacing spaces takes longer. For heavy UDP loads, doing bytes replacements and running a compiled regex over the raw byte string (`br'([a-zA-Z][0-9])([0-9]+(?:[ISis][0-9]+)?)'`), then finally decoding the assembled output string is ~17-20% faster.
 **Action:** When working on tight loop parsing of string-based network commands (like T-Code) from UDP streams, keep the data in bytes as long as possible. Defer `.decode()` until final string assembly to avoid Python's internal string construction overhead for intermediate states.
+
+## 2025-02-15 - Unintentional Polling Delay in Serial Reading
+**Learning:** In a while loop designed to poll a serial port alongside a fixed `time.sleep()`, using a timeout-based `readline()` and unconditionally sleeping afterwards creates an artificial bottleneck. If a device streams data continuously, sleeping *after* every read caps the throughput (e.g., `time.sleep(0.01)` caps throughput to 100Hz max, even if thousands of lines are waiting).
+**Action:** When writing polling loops for I/O (like serial reading), skip the sleep delay (e.g. using `continue`) if a full message was successfully read, allowing the loop to immediately read the next available message. This drains the buffer as fast as possible while still sleeping during idle periods to save CPU.
+
+## 2025-02-15 - Exception Consolidation in Hot Loops
+**Learning:** Catching single exception classes in separate blocks (e.g., `except BlockingIOError: ... except socket.error: ...`) is slightly slower than catching a single common base class `except OSError:`, because `BlockingIOError` is a subclass of `OSError` and `socket.error` is an alias for `OSError`.
+**Action:** In high-frequency tight loops, catch a single encompassing exception like `OSError` when the handling logic is identical, to save marginal overhead over multiple `except` block evaluations.
