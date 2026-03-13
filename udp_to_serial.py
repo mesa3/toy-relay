@@ -194,9 +194,9 @@ class UdpToSerialRelay:
                             if data:
                                 packets.append(data)
                                 self.last_udp_addr = addr
-                        except BlockingIOError:
-                            break
-                        except socket.error:
+                        # ⚡ Optimized: Catching single OSError is slightly faster than
+                        # multiple exception blocks or tuples in tight loops.
+                        except OSError:
                             break
                     
                     if packets:
@@ -237,6 +237,10 @@ class UdpToSerialRelay:
                             logger.info(f"<- [Device Feedback] {decoded}")
                             if self.last_udp_addr:
                                 self.sock.sendto(line, self.last_udp_addr)
+                        # ⚡ Optimized: If a line was read, immediately try reading the next line
+                        # instead of sleeping, since readline() already handles timeouts internally.
+                        # This lifts the artificial 100Hz bottleneck on bidirectional serial feedback.
+                        continue
                 except Exception:
                     pass
             time.sleep(0.01)
