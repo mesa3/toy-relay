@@ -25,3 +25,7 @@
 ## 2024-11-13 - [Optimize T-Code processing in hot loop]
 **Learning:** T-Code parser decoding incoming byte packets to utf-8 strings *before* running regular expressions and replacing spaces takes longer. For heavy UDP loads, doing bytes replacements and running a compiled regex over the raw byte string (`br'([a-zA-Z][0-9])([0-9]+(?:[ISis][0-9]+)?)'`), then finally decoding the assembled output string is ~17-20% faster.
 **Action:** When working on tight loop parsing of string-based network commands (like T-Code) from UDP streams, keep the data in bytes as long as possible. Defer `.decode()` until final string assembly to avoid Python's internal string construction overhead for intermediate states.
+
+## 2024-11-20 - Serial Port Unconditional Sleep Bottleneck
+**Learning:** In I/O polling loops (like serial reading with `readline` timeouts), unconditionally sleeping after every read creates an artificial throughput bottleneck.
+**Action:** Using `continue` after a successful read allows the loop to immediately process the next available message, efficiently draining the buffer.
