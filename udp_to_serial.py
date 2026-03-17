@@ -33,8 +33,9 @@ TCODE_REGEX_BYTES = re.compile(br'([a-zA-Z][0-9])([0-9]+(?:[ISis][0-9]+)?)')
 
 
 class TCodeWSServer:
-    def __init__(self, port=8765):
+    def __init__(self, port=8765, host="127.0.0.1"):
         self.port = port
+        self.host = host
         self.clients = set()
         self.loop = None
         self.running = False
@@ -51,10 +52,10 @@ class TCodeWSServer:
         self.loop = asyncio.new_event_loop()
         asyncio.set_event_loop(self.loop)
 
-        start_server = websockets.serve(self._handler, "0.0.0.0", self.port)
+        start_server = websockets.serve(self._handler, self.host, self.port)
         self.server = self.loop.run_until_complete(start_server)
 
-        logger.info(f"WebSocket server started on port {self.port}")
+        logger.info(f"WebSocket server started on {self.host}:{self.port}")
         self.loop.run_forever()
 
     def start(self):
@@ -325,6 +326,9 @@ class RelayGUI:
 
         self.enable_ws = tk.BooleanVar(value=True)
         ttk.Checkbutton(row2, text="Enable WS", variable=self.enable_ws).pack(side="left", padx=10)
+        ttk.Label(row2, text="Host:").pack(side="left")
+        self.ws_host = tk.StringVar(value="127.0.0.1")
+        ttk.Entry(row2, textvariable=self.ws_host, width=12).pack(side="left", padx=2)
         ttk.Label(row2, text="Port:").pack(side="left")
         self.ws_port = tk.IntVar(value=8765)
         ttk.Entry(row2, textvariable=self.ws_port, width=6).pack(side="left", padx=2)
@@ -385,7 +389,7 @@ class RelayGUI:
 
     def start_service(self):
         if self.enable_ws.get():
-            self.ws_server = TCodeWSServer(port=self.ws_port.get())
+            self.ws_server = TCodeWSServer(port=self.ws_port.get(), host=self.ws_host.get())
             self.ws_server.start()
 
         self.relay = UdpToSerialRelay(
