@@ -237,6 +237,9 @@ class UdpToSerialRelay:
                             logger.info(f"<- [Device Feedback] {decoded}")
                             if self.last_udp_addr:
                                 self.sock.sendto(line, self.last_udp_addr)
+                            # ⚡ Optimized: If a line was read, immediately continue to drain the buffer
+                            # without artificial delay, maximizing feedback throughput.
+                            continue
                 except Exception:
                     pass
             time.sleep(0.01)
