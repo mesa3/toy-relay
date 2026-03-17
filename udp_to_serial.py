@@ -25,9 +25,6 @@ logger = logging.getLogger(__name__)
 logger.setLevel(logging.INFO)
 
 # T-Code parsing regex
-# ⚡ Optimized: Removed \s* checks because spaces are stripped at the byte level before decoding, yielding ~10% faster regex matching
-TCODE_REGEX = re.compile(r'([A-Z][0-9])([0-9]+(?:[IS][0-9]+)?)')
-
 # ⚡ Optimized: Byte-level regex to avoid string decoding overhead prior to regex evaluation
 TCODE_REGEX_BYTES = re.compile(br'([a-zA-Z][0-9])([0-9]+(?:[ISis][0-9]+)?)')
 
