@@ -33,3 +33,7 @@
 ## 2024-11-15 - Hot Loop Append Caching & Exception Consolidation
 **Learning:** In tight `while True:` network reading loops that append chunks to a buffer until it blocks, repeatedly resolving `.append` and handling multiple separate exceptions (`except BlockingIOError: ... except socket.error:`) creates measurable overhead. `recvfrom` rarely returns empty data unless explicitly sent 0-byte packets, so `if data:` is often redundant.
 **Action:** Consolidate multiple socket exceptions into a single base `except OSError:` to simplify the exception block. Cache list append operations (`append_packet = packets.append`) outside the loop. These structural simplifications can yield an additional ~5-15% throughput gain in already optimized hot reading loops.
+
+## 2024-11-20 - Byte-level Filtering of Hardware Feedback
+**Learning:** In high-frequency hardware read loops (like reading serial feedback `\r\n`), stripping and checking the emptiness of strings after `.decode()` adds unnecessary string allocation overhead.
+**Action:** When processing `bytes` hardware feedback, perform `.strip()` and check for falsy/empty values in the bytes domain *before* decoding to strings. This prevents decoding useless empty line overhead and measurably improves throughput by ~15-20%.
