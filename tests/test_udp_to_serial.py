@@ -147,5 +147,17 @@ class TestUdpToSerialRelay(unittest.TestCase):
         # Should not raise
         relay.setup_connections()
 
+    def test_send_serial_cmd_failure(self):
+        """Test that send_serial_cmd handles and logs serial write exceptions"""
+        self.relay.dummy = False
+        self.relay.ser = MagicMock()
+        self.relay.ser.is_open = True
+        self.relay.ser.write.side_effect = Exception("Write failed")
+
+        with self.assertLogs('udp_to_serial', level='ERROR') as cm:
+            self.relay.send_serial_cmd("L05000")
+
+        self.assertTrue(any("Serial send failed: Write failed" in output for output in cm.output))
+
 if __name__ == '__main__':
     unittest.main()
