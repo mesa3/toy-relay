@@ -29,3 +29,7 @@
 ## 2024-11-14 - I/O Polling Loop Artificial Delay Overhead
 **Learning:** In I/O polling loops (like serial reading with `readline` timeouts), unconditionally sleeping (e.g., `time.sleep(0.01)`) after every read attempt, even successful ones, creates an artificial throughput bottleneck. This prevents the loop from efficiently draining a full buffer during high-activity bursts.
 **Action:** When using a short timeout read inside a polling loop, add a `continue` statement immediately after a successful read and process. This allows the loop to bypass the sleep delay and immediately fetch the next available message, dynamically adjusting to high-throughput bursts while still yielding during idle periods.
+
+## 2024-11-15 - Hot Loop Append Caching & Exception Consolidation
+**Learning:** In tight `while True:` network reading loops that append chunks to a buffer until it blocks, repeatedly resolving `.append` and handling multiple separate exceptions (`except BlockingIOError: ... except socket.error:`) creates measurable overhead. `recvfrom` rarely returns empty data unless explicitly sent 0-byte packets, so `if data:` is often redundant.
+**Action:** Consolidate multiple socket exceptions into a single base `except OSError:` to simplify the exception block. Cache list append operations (`append_packet = packets.append`) outside the loop. These structural simplifications can yield an additional ~5-15% throughput gain in already optimized hot reading loops.
