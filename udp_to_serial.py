@@ -229,8 +229,11 @@ class UdpToSerialRelay:
                 try:
                     line = self.ser.readline()
                     if line:
-                        decoded = line.decode(errors='replace').strip()
-                        if decoded:
+                        # ⚡ Optimized: Strip byte line before decoding to prevent creating
+                        # string objects and overhead when dealing with empty/whitespace feedback lines.
+                        stripped = line.strip()
+                        if stripped:
+                            decoded = stripped.decode(errors='replace')
                             logger.info(f"<- [Device Feedback] {decoded}")
                             if self.last_udp_addr:
                                 self.sock.sendto(line, self.last_udp_addr)
