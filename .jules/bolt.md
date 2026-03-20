@@ -37,3 +37,11 @@
 ## 2024-11-20 - Byte-level Filtering of Hardware Feedback
 **Learning:** In high-frequency hardware read loops (like reading serial feedback `\r\n`), stripping and checking the emptiness of strings after `.decode()` adds unnecessary string allocation overhead.
 **Action:** When processing `bytes` hardware feedback, perform `.strip()` and check for falsy/empty values in the bytes domain *before* decoding to strings. This prevents decoding useless empty line overhead and measurably improves throughput by ~15-20%.
+
+## 2024-11-20 - False Positives in Empty Packet Handling
+**Learning:** Removing an `if data:` check after a non-blocking `recvfrom` call as a micro-optimization is functionally dangerous. While a `BlockingIOError` handles the "no data available" state, a valid 0-byte keep-alive packet will return `b''` without an exception. Skipping the check processes these keep-alives as normal data, changing application behavior.
+**Action:** Never remove a truthiness check on network read buffers just to save a few nanoseconds if empty buffers (like 0-byte packets) are a legitimate network state that must be ignored.
+
+## 2024-11-20 - Redundant Sleep after Timeout Blocking Calls
+**Learning:** In I/O polling loops where a read call (like PySerial's `readline()`) already has a configured timeout (e.g., `0.01s`), the function blocks and yields the CPU naturally. Adding an explicit `time.sleep(0.01)` at the end of the loop iteration doubles the idle waiting time and artificially halves the polling rate (from 100Hz to 50Hz).
+**Action:** Move explicit `sleep` calls into an `else` branch (or specific disconnect state checks) so they only execute when the blocking read is bypassed (e.g., dummy mode or disconnected state), ensuring maximum polling throughput when the hardware is connected.
