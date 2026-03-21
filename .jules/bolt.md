@@ -37,3 +37,7 @@
 ## 2024-11-20 - Byte-level Filtering of Hardware Feedback
 **Learning:** In high-frequency hardware read loops (like reading serial feedback `\r\n`), stripping and checking the emptiness of strings after `.decode()` adds unnecessary string allocation overhead.
 **Action:** When processing `bytes` hardware feedback, perform `.strip()` and check for falsy/empty values in the bytes domain *before* decoding to strings. This prevents decoding useless empty line overhead and measurably improves throughput by ~15-20%.
+
+## 2025-02-19 - Polling Loop Latency vs Throughput
+**Learning:** In network polling loops, replacing `select.select(..., timeout)` with a direct `recvfrom()` followed by an unconditional `time.sleep(timeout)` on failure severely caps throughput. `select` sleeps *up to* the timeout but returns instantly when data arrives, whereas an unconditional sleep always blocks for the full duration, limiting the loop rate to `1/timeout` (e.g., 100Hz for 0.01s) and adding artificial latency.
+**Action:** Do not remove `select.select` from non-blocking polling loops unless it can be replaced by a truly event-driven mechanism (like `epoll` or `asyncio`). Attempting to bypass the syscall with an unconditional sleep is an anti-pattern that creates performance regressions.
