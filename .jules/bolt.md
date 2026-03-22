@@ -37,3 +37,7 @@
 ## 2024-11-20 - Byte-level Filtering of Hardware Feedback
 **Learning:** In high-frequency hardware read loops (like reading serial feedback `\r\n`), stripping and checking the emptiness of strings after `.decode()` adds unnecessary string allocation overhead.
 **Action:** When processing `bytes` hardware feedback, perform `.strip()` and check for falsy/empty values in the bytes domain *before* decoding to strings. This prevents decoding useless empty line overhead and measurably improves throughput by ~15-20%.
+
+## 2024-11-20 - Byte-level String Suffix Concatenation
+**Learning:** In string-building operations that conclude with adding a static terminator like a newline (`\n`), decoding an intermediate byte sequence to a string and *then* concatenating the suffix (`bytes.decode() + "\n"`) causes Python to allocate a temporary string object.
+**Action:** Append the static suffix while still in the bytes domain (e.g., `(bytes + b"\n").decode()`) before decoding the final combined output. This skips the intermediate string allocation and improves concatenation speed.

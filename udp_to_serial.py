@@ -158,10 +158,11 @@ class UdpToSerialRelay:
             return None
         
         # ⚡ Optimized: Direct string concatenation instead of f-string.
-        # Join bytes, then uppercase and decode as ASCII just before returning.
+        # Join bytes, append the final newline terminator in the bytes domain to prevent
+        # creating an intermediate string object, then uppercase and decode as ASCII.
         # ASCII decoding is faster than UTF-8 and safe for T-Code.
         merged = b" ".join([axis + cmd for axis, cmd in axis_state.items()])
-        return merged.upper().decode('ascii', errors='replace') + "\n"
+        return (merged.upper() + b"\n").decode('ascii', errors='replace')
 
     def run(self):
         try:
