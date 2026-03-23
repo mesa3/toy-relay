@@ -45,3 +45,7 @@
 ## 2024-11-20 - Redundant Sleep after Timeout Blocking Calls
 **Learning:** In I/O polling loops where a read call (like PySerial's `readline()`) already has a configured timeout (e.g., `0.01s`), the function blocks and yields the CPU naturally. Adding an explicit `time.sleep(0.01)` at the end of the loop iteration doubles the idle waiting time and artificially halves the polling rate (from 100Hz to 50Hz).
 **Action:** Move explicit `sleep` calls into an `else` branch (or specific disconnect state checks) so they only execute when the blocking read is bypassed (e.g., dummy mode or disconnected state), ensuring maximum polling throughput when the hardware is connected.
+
+## 2024-11-20 - Object Attribute Access in Tight Network Loops
+**Learning:** Writing to an object attribute (e.g., `self.last_udp_addr = addr`) inside the tightest network reading `while True:` loop introduces Python object lookups and assignment overhead on every single packet, which slows down buffer draining.
+**Action:** When a loop must record the last state of a value (like the last received network address), cache it to a fast local variable (e.g., `last_addr = addr`) inside the tight loop, and then assign it back to the object attribute only once *after* the loop terminates. This minor structural refactor shaves off loop overhead and can reliably improve UDP drain throughput.
