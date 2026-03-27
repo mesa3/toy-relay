@@ -185,17 +185,22 @@ class UdpToSerialRelay:
                     packets = []
                     # ⚡ Optimized: Cache list append and consolidate exceptions
                     # to OSError for ~5-15% faster iterations in the tight UDP reading loop.
+                    # ⚡ Bolt: Cache addr update in a local variable to avoid self attribute lookup/assignment overhead on every packet.
                     recvfrom = self.sock.recvfrom
                     append_packet = packets.append
+                    last_addr = None
                     while True:
                         try:
                             data, addr = recvfrom(4096)
                             if data:
                                 append_packet(data)
-                                self.last_udp_addr = addr
+                                last_addr = addr
                         except OSError:
                             break
                     
+                    if last_addr is not None:
+                        self.last_udp_addr = last_addr
+
                     if packets:
                         # ⚡ Optimized: Moved system calls outside the tight socket reading loop
                         self.last_receive_time = time.time()
