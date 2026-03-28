@@ -49,3 +49,7 @@
 ## 2024-05-23 - Optimize tight data-ingestion loops by deferring attribute updates
 **Learning:** In tight data-ingestion loops (like UDP network reading with `recvfrom`), writing to an object attribute (e.g., `self.last_udp_addr = addr`) on every iteration introduces lookup and assignment overhead, which is measurable in CPython.
 **Action:** Cache the value to a local variable (e.g., `last_addr = addr`) inside the loop, and update the object attribute only once after the loop terminates. This significantly improves iteration speed for high-frequency or bursty packet streams.
+
+## 2024-11-20 - Avoid asyncio.gather for Fire-and-Forget Broadcasts
+**Learning:** In high-frequency `asyncio` networking applications (like WebSocket broadcasting), `asyncio.run_coroutine_threadsafe(asyncio.gather(*[client.send(message) for client in clients], return_exceptions=True), loop)` is slow. Creating the intermediate coroutine list, wrapping it in gather, and scheduling it via threadsafe calls introduces massive overhead for large loops and client bases.
+**Action:** Replace `asyncio.run_coroutine_threadsafe(asyncio.gather(...))` with `loop.call_soon_threadsafe(func)`, where `func` directly calls `loop.create_task(_safe_send(client, message))`. The `_safe_send` wrapper must contain a try-except block to safely discard exceptions and prevent 'Task exception was never retrieved' warnings. This removes intermediate scheduling overhead and dramatically improves throughput for fire-and-forget broadcasts.

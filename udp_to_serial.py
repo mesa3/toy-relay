@@ -68,19 +68,28 @@ class TCodeWSServer:
             self.loop.call_soon_threadsafe(self.loop.stop)
             logger.info("WebSocket server stopped")
 
-    async def _broadcast_coro(self, message):
-        if self.clients:
-            await asyncio.gather(*[client.send(message) for client in self.clients], return_exceptions=True)
+    async def _safe_send(self, client, message):
+        """Safely sends a message to a single client, ignoring exceptions
+        to prevent 'Task exception was never retrieved' errors."""
+        try:
+            await client.send(message)
+        except Exception:
+            pass
 
     def broadcast(self, message):
         """Broadcasts message to all connected clients.
-        ⚡ Optimized: Extracted inner async function to a class method
-        to prevent redundant object creation overhead per broadcast.
+        ⚡ Optimized: Using call_soon_threadsafe with create_task directly
+        instead of asyncio.gather() eliminates coroutine scheduling overhead
+        and significantly improves throughput for fire-and-forget broadcasts.
         """
         if not self.running or not self.clients or not self.loop:
             return
 
-        asyncio.run_coroutine_threadsafe(self._broadcast_coro(message), self.loop)
+        def _do_broadcast():
+            for client in self.clients:
+                self.loop.create_task(self._safe_send(client, message))
+
+        self.loop.call_soon_threadsafe(_do_broadcast)
 
 class UdpToSerialRelay:
     def __init__(self, udp_ip: str, udp_port: int, serial_port: str, baud_rate: int, dummy: bool = False, verbose: bool = False, ws_server: TCodeWSServer = None):
