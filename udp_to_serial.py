@@ -34,6 +34,7 @@ class TCodeWSServer:
         self.port = port
         self.host = host
         self.clients = set()
+        self.tasks = set()
         self.loop = None
         self.running = False
         self.thread = None
@@ -68,19 +69,30 @@ class TCodeWSServer:
             self.loop.call_soon_threadsafe(self.loop.stop)
             logger.info("WebSocket server stopped")
 
-    async def _broadcast_coro(self, message):
-        if self.clients:
-            await asyncio.gather(*[client.send(message) for client in self.clients], return_exceptions=True)
+    def _send_to_clients(self, message):
+        async def send_safe(client, msg):
+            try:
+                await client.send(msg)
+            except Exception:
+                pass
+        for client in self.clients:
+            # ⚡ Optimized: We use create_task directly to avoid the overhead of
+            # run_coroutine_threadsafe and asyncio.gather.
+            # We keep a strong reference to the task to prevent it from being garbage collected mid-execution.
+            task = self.loop.create_task(send_safe(client, message))
+            self.tasks.add(task)
+            task.add_done_callback(self.tasks.discard)
 
     def broadcast(self, message):
         """Broadcasts message to all connected clients.
-        ⚡ Optimized: Extracted inner async function to a class method
-        to prevent redundant object creation overhead per broadcast.
+        ⚡ Optimized: Replaced asyncio.run_coroutine_threadsafe and asyncio.gather
+        with loop.call_soon_threadsafe and direct task creation to remove
+        intermediate coroutine scheduling overhead for fire-and-forget broadcasts.
         """
         if not self.running or not self.clients or not self.loop:
             return
 
-        asyncio.run_coroutine_threadsafe(self._broadcast_coro(message), self.loop)
+        self.loop.call_soon_threadsafe(self._send_to_clients, message)
 
 class UdpToSerialRelay:
     def __init__(self, udp_ip: str, udp_port: int, serial_port: str, baud_rate: int, dummy: bool = False, verbose: bool = False, ws_server: TCodeWSServer = None):
