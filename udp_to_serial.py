@@ -250,7 +250,7 @@ class UdpToSerialRelay:
                     # persistent read exceptions instead of timing out normally.
                     time.sleep(0.01)
             else:
-                # ⚡ Optimized: Only sleep when disconnected or in dummy mode.
+                # ⚡ Bolt: Only sleep when disconnected or in dummy mode.
                 # `self.ser.readline()` already blocks for 0.01s (configured timeout),
                 # so sleeping again when open halves the idle polling rate artificially
                 # and adds up to 10ms of jitter when a message arrives.
