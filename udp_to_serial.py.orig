@@ -37,7 +37,6 @@ class TCodeWSServer:
         self.loop = None
         self.running = False
         self.thread = None
-        self._bg_tasks = set()
 
     async def _handler(self, websocket, path=None):
         self.clients.add(websocket)
@@ -69,27 +68,19 @@ class TCodeWSServer:
             self.loop.call_soon_threadsafe(self.loop.stop)
             logger.info("WebSocket server stopped")
 
-    async def _send_to_client(self, client, message):
-        try:
-            await client.send(message)
-        except Exception:
-            pass
-
-    def _schedule_broadcast(self, message):
-        # Iterate over a copy of clients in case it changes during iteration
-        for client in list(self.clients):
-            task = self.loop.create_task(self._send_to_client(client, message))
-            self._bg_tasks.add(task)
-            task.add_done_callback(self._bg_tasks.discard)
+    async def _broadcast_coro(self, message):
+        if self.clients:
+            await asyncio.gather(*[client.send(message) for client in self.clients], return_exceptions=True)
 
     def broadcast(self, message):
         """Broadcasts message to all connected clients.
-        ⚡ Optimized: Replaced `asyncio.run_coroutine_threadsafe` and `asyncio.gather`
-        with `call_soon_threadsafe` and `create_task` to eliminate coroutine scheduling overhead.
+        ⚡ Optimized: Extracted inner async function to a class method
+        to prevent redundant object creation overhead per broadcast.
         """
         if not self.running or not self.clients or not self.loop:
             return
-        self.loop.call_soon_threadsafe(self._schedule_broadcast, message)
+
+        asyncio.run_coroutine_threadsafe(self._broadcast_coro(message), self.loop)
 
 class UdpToSerialRelay:
     def __init__(self, udp_ip: str, udp_port: int, serial_port: str, baud_rate: int, dummy: bool = False, verbose: bool = False, ws_server: TCodeWSServer = None):
@@ -100,7 +91,7 @@ class UdpToSerialRelay:
         self.baud_rate = baud_rate
         self.dummy = dummy
         self.verbose = verbose
-        
+
         self.sock = None
         self.ser = None
         self.running = False
@@ -126,7 +117,7 @@ class UdpToSerialRelay:
                 timeout=0.01, # Short timeout for reading
                 write_timeout=0.1
             )
-            time.sleep(1) 
+            time.sleep(1)
             logger.info(f"Serial connection successful: {self.serial_port_name}")
             self.send_serial_cmd("L05000 R15000 V00000") # Center device
 
@@ -165,7 +156,7 @@ class UdpToSerialRelay:
 
         if not axis_state:
             return None
-        
+
         # ⚡ Optimized: Direct string concatenation instead of f-string.
         # Join bytes, then uppercase and decode as ASCII just before returning.
         # ASCII decoding is faster than UTF-8 and safe for T-Code.
@@ -181,7 +172,7 @@ class UdpToSerialRelay:
 
         self.running = True
         logger.info("Relay service started...")
-        
+
         # Start serial reading thread (for UDP feedback)
         serial_thread = threading.Thread(target=self.serial_to_udp_loop, daemon=True)
         serial_thread.start()
@@ -189,7 +180,7 @@ class UdpToSerialRelay:
         while self.running:
             try:
                 readable, _, _ = select.select([self.sock], [], [], 0.01)
-                
+
                 if readable:
                     packets = []
                     # ⚡ Optimized: Cache list append and consolidate exceptions
@@ -206,7 +197,7 @@ class UdpToSerialRelay:
                                 last_addr = addr
                         except OSError:
                             break
-                    
+
                     if last_addr is not None:
                         self.last_udp_addr = last_addr
 
@@ -308,7 +299,7 @@ class RelayGUI:
         self.root = root
         self.root.title("toy-relay - UDP to Serial")
         self.root.geometry("650x600")
-        
+
         self.relay = None
         self.thread = None
 
@@ -325,7 +316,7 @@ class RelayGUI:
         ttk.Label(row0, text=":").pack(side="left")
         self.udp_port = tk.IntVar(value=8000)
         ttk.Entry(row0, textvariable=self.udp_port, width=6).pack(side="left", padx=2)
-        
+
         # Serial Port
         row1 = ttk.Frame(settings_frame)
         row1.pack(fill="x", padx=5, pady=2)
@@ -334,7 +325,7 @@ class RelayGUI:
         self.port_combo = ttk.Combobox(row1, textvariable=self.serial_port, width=20)
         self.port_combo.pack(side="left", padx=5)
         ttk.Button(row1, text="Refresh", command=self.refresh_ports).pack(side="left")
-        
+
         ttk.Label(row1, text="Baud Rate:").pack(side="left", padx=(10,0))
         self.baud_rate = tk.IntVar(value=921600)
         ttk.Entry(row1, textvariable=self.baud_rate, width=10).pack(side="left", padx=2)
@@ -361,7 +352,7 @@ class RelayGUI:
         # Live Control
         cmd_frame = ttk.LabelFrame(root, text="Live Control")
         cmd_frame.pack(fill="x", padx=10, pady=5)
-        
+
         row3 = ttk.Frame(cmd_frame)
         row3.pack(fill="x", padx=5, pady=5)
         self.cmd_input = tk.StringVar()
@@ -370,7 +361,7 @@ class RelayGUI:
         self.ent.pack(side="left", fill="x", expand=True, padx=5)
         self.ent.bind("<Return>", lambda e: self.send_manual_cmd())
         ttk.Button(row3, text="Send", command=self.send_manual_cmd).pack(side="left")
-        
+
         # Preset Commands
         row4 = ttk.Frame(cmd_frame)
         row4.pack(fill="x", padx=5, pady=2)
