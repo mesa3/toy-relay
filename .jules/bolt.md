@@ -49,3 +49,7 @@
 ## 2024-05-23 - Optimize tight data-ingestion loops by deferring attribute updates
 **Learning:** In tight data-ingestion loops (like UDP network reading with `recvfrom`), writing to an object attribute (e.g., `self.last_udp_addr = addr`) on every iteration introduces lookup and assignment overhead, which is measurable in CPython.
 **Action:** Cache the value to a local variable (e.g., `last_addr = addr`) inside the loop, and update the object attribute only once after the loop terminates. This significantly improves iteration speed for high-frequency or bursty packet streams.
+
+## 2026-04-28 - WebSocket Broadcasting Scheduling Optimization
+**Learning:** In high-frequency `asyncio` networking applications (like WebSocket broadcasting), wrapping fire-and-forget message sending inside an intermediate coroutine using `asyncio.run_coroutine_threadsafe` and `await asyncio.gather(...)` adds unnecessary coroutine scheduling overhead. For fast concurrent dispatch, this structure creates intermediate layers that throttle broadcast throughput.
+**Action:** Replace `asyncio.run_coroutine_threadsafe` with `loop.call_soon_threadsafe(func)`, and have the synchronous `func` directly enqueue tasks using `loop.create_task()` for each client. Always maintain a strong reference set (e.g., `self._bg_tasks`) to prevent tasks from being garbage collected mid-execution.
